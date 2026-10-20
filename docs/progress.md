@@ -36,3 +36,33 @@
 - **Scurgere de memorie** (2026-10-19): texturile nu erau eliberate niciodată (eliberarea era sub `TMNT_FREE_TEXTURES`); după ~45 de minute de demo-uri, heap-ul guest ajungea la 492 MB și o încărcare rămânea blocată. Acum `Release` la 0 eliberează nivelele, suprafețele și numele GL (șterse pe thread-ul de randare la următorul `Present`, pentru că jocul eliberează și de pe thread-ul de încărcare). Heap stabil 31–56 MB pe 22 000 de cadre de demo.
 - **Checkpoint-uri pe zone** (`rt/game_tmnt.c`, hook pe `LoadArea` 0x4ae293 prin `HOOKS` în `gen_c.py`): tabelul de zone la 0x5e0560 (56 B: stagiu, zonă, nume, index `.pac`), starea jocului la `[0x60a438]` (+0x13c = zona următoare). Doar apelurile din calea de gameplay (`0x4b5320`) contează; demo-urile de prezentare încarcă zone din `0x411db0`. Fișier separat `TMNTCheckpoint.dat`; `TMNT_NO_CHECKPOINTS=1` le oprește.
 - Checkpoint-urile funcționează (confirmat de user): `StartArea` (0x411d93, al doilea argument = zona) e folosit și de joc, și de demo-uri; le deosebește apelantul ultimului `SetNextArea` (0x4047d7): meniul de stagii (0x48c92d, 0x4a1f96) sau zonă terminată (0x49475f). Rămâne de verificat ștergerea checkpoint-ului la terminarea unui stagiu întreg.
+
+## 2026-10-19/20 – Faza Vita: jocul rulează pe consolă
+
+- **Platforma Vita**:
+  - `rt/plat_vita.c`: vitaGL la 960x544; SceCtrl e un joystick DirectInput (✕ ◯ □ △ L R Select Start, cruce = POV, ambele stick-uri); SceAudioOut la 48 kHz; PNG fără zlib; L+R+Select creează `dump.req`.
+  - `rt/osdep.h`: mutex și condiție de kernel (condițiile pthread pierd treziri pe Vita), timp, sleep, plasarea thread-urilor.
+  - Build: `vita/CMakeLists.txt` → `build/vita/TMNTVita.vpk`, title ID `TMNT02003`. Build-ul complet durează ~10 min; link-ul are nevoie de `stdc++` pentru vitaGL.
+  - Pe card: `ux0:data/TMNT2003/` conține datele, `image.bin`, salvările, `log.txt` și opțional `tmnt_env.txt`, cu linii `NAME=value` în loc de variabile de mediu.
+- **Ecranul**: Win32 raportează rezoluția jocului (`plat_game_size`, 800x600); doar maparea viewport/scissor/clear folosește ecranul real. Altfel jocul ieșea la pornire. Implicit imaginea e întinsă, iar `TMNT_ASPECT=4:3` pune benzi negre. Pe Mac, `TMNT_WINDOW=960x544` previzualizează ecranul Vitei.
+- **Blocajele de la pornire de pe Vita**, rezolvate în ordine:
+  1. `SuspendThread` se aplica la următorul apel de API, iar un worker ADX era oprit cu o secțiune critică luată. Acum un thread se oprește doar în afara secțiunilor critice.
+  2. Pe Vita, thread-urile cu aceeași prioritate nu își împart timpul pe un nucleu, deci un thread care se învârte îl blochează pe celălalt. Acum thread-ul principal are nucleul 0 singur, restul folosesc nucleele 1–2; timerele au prioritate time-critical, iar `SetThreadPriority` se aplică.
+  3. `timeSetEvent` crea un thread nou la fiecare armare. Acum fiecare slot are un thread permanent.
+  4. `__thread` e emulat pe Vita, iar thread-urile se blocau în emulare. Runtime-ul nu mai are TLS: contextul thread-ului se găsește după `CPU*`.
+- **Ecran alb**: `glClientActiveTexture` pe unitățile 2–3 (inexistente în vitaGL) dezactiva coordonatele unității 0. Acum se ating doar unitățile folosite.
+- **Texgen pe procesor**: vitaGL n-are `glTexGen`. Cel-shading-ul țestoaselor (rampa 16x1, `TCI_CAMERASPACENORMAL` + matricea de textură) se calculează în `cpu_texgen_coords`, cu normala prin inversa transpusă a world*view. Fără inversa transpusă apăreau contururi albe. Pe Mac, `TMNT_CPU_TEXGEN=1` compară cu OpenGL nativ.
+- **Demo-ul de pe PRESS START** e scos: `CODE_PATCHES` în `recomp/tmnt_image.py`, pragul 0x708 → 0xFFFFFFFF la 0x49865a.
+- **Viteza în misiune** (Vita): 245 ms/cadru → 114–133 ms (~8 FPS), prin:
+  - desenele convertesc doar vârfurile desenate (60 → 13 ms);
+  - `GUEST_GPR_LOCAL=1` pentru codul generat (pe Vita și pe Mac), cu joc ~185 → ~100 ms;
+  - `rdtsc` pe `sceKernelGetProcessTimeLow` (jocul îl citește de 6–15k ori pe cadru);
+  - memorie a stării GL în `d3d9_gl.c` (netestată încă pe Vita).
+- **Profilare**: `TMNT_PROF=1` loghează timpul API pe metodă și funcțiile guest eșantionate; fără el se loghează doar împărțirea cadrului. `TMNT_WATCHDOG=1` loghează starea thread-urilor la 2 s.
+- **Test automat pe Mac fără fereastră**: `TMNT_HIDDEN=1`. Tastele implicite ale jocului: F confirmă, D anulează; la alegerea țestoasei se apasă săgeata, apoi F. Scenariul cu `TMNT_KEYS` ajunge în Town2 în ~110 s.
+- **Rămase**:
+  - filmele de intro nu se văd nici pe Mac (`StretchRect` lipsește);
+  - mipmap-urile nu se folosesc pe Vita;
+  - stiva x87 virtualizată în variabile locale (estimare: ~30% din codul jocului e x87);
+  - un thread separat de randare;
+  - sacadare la prima întâlnire a unei stări noi, probabil compilarea shaderelor ffp din vitaGL.
