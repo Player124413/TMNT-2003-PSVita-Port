@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -158,12 +159,21 @@ def main():
     run(tool_command(bt, "zipalign") + ["-c", "-p", "-v", "4", str(apk)], stdout=subprocess.DEVNULL)
     badging = output(tool_command(bt, "aapt2") + ["dump", "badging", str(apk)])
     print(badging)
-    check("package: name='org.tmnt.port'" in badging, "wrong application id")
-    check("sdkVersion:'26'" in badging, "wrong minSdk")
-    check("targetSdkVersion:'35'" in badging, "wrong targetSdk")
-    check("launchable-activity: name='org.tmnt.port.LauncherActivity'" in badging, "launcher activity missing")
+    def badge(field):
+        m = re.search(r"^" + re.escape(field) + r":\s*'([^']*)'", badging, re.MULTILINE)
+        return m.group(1) if m else None
+    def require(value, expected, label):
+        if value != expected:
+            detail = "%s: expected %r, got %r" % (label, expected, value)
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                print("::error::" + detail + "\nBadging header:\n" + "\n".join(badging.splitlines()[:12]), flush=True)
+            raise SystemExit("APK verification failed: " + detail)
+    require(badge("package"), "org.tmnt.port", "application id")
+    require(badge("sdkVersion") or badge("minSdkVersion"), "26", "minSdk")
+    require(badge("targetSdkVersion"), "35", "targetSdk")
+    require(badge("launchable-activity"), "org.tmnt.port.LauncherActivity", "launcher activity")
     check("uses-permission: name='android.permission.INTERNET'" not in badging, "APK must not request INTERNET")
-    check("native-code: 'armeabi-v7a'" in badging, "wrong native ABI")
+    require(badge("native-code"), "armeabi-v7a", "native ABI")
 
     with zipfile.ZipFile(apk) as z:
         names = z.namelist()
