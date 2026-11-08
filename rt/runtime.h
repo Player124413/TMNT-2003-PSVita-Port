@@ -6,7 +6,7 @@
 #include "guest.h"
 
 /* The Vita has no room for 512 MB: a level keeps ~65 MB of guest heap in use. */
-#ifdef __vita__
+#if defined(__vita__) || defined(__ANDROID__)
 #define GUEST_SPACE (192U << 20)
 #else
 #define GUEST_SPACE (512U << 20)

@@ -15,6 +15,10 @@
 #include "osdep.h"
 #include "game_hooks.h"
 #include "overlay_font.h"
+#ifdef __ANDROID__
+#include "android/touch.h"
+int plat_frame_begin(void);
+#endif
 
 /* GL state cache. The draw path re-specifies the whole fixed-function state for every D3D draw; vitaGL marks its pipeline dirty
  * (and re-selects a shader) on each such call even when nothing changed. Every simple state call in this file goes through these
@@ -1713,8 +1717,22 @@ static void draw_vita_overlay(uint32_t frame)
 }
 
 /* The GL half of Present (the render thread in mode 1); the game thread counts the frame. */
+#ifdef __ANDROID__
+static void gl_reset_state_cache(void)
+{
+    sc_ncaps=0; memset(sc_nenv,0,sizeof sc_nenv); memset(sc_valid,0,sizeof sc_valid);
+    for(int u=0;u<4;u++){ sc_env_scale[u][0]=sc_env_scale[u][1]=-1;
+        for(int k=0;k<4;k++)sc_env_color[u][k]=-1; tc_enabled[u]=0; }
+    for(int i=0;i<7;i++)sc_client_on[i]=-1;
+    sc_unit=0; sc_client_unit=GL_TEXTURE0; sc_array_buf=sc_element_buf=0;
+    memset(vp_last,-1,sizeof vp_last); xf_forget();
+}
+#endif
 static void exec_present(d3d_device *d, int overlay)
 {
+#ifdef __ANDROID__
+    uint64_t frame_begin_us=plat_ticks_us(), now0=frame_begin_us;
+#endif
     pthread_mutex_lock(&pending_lock);
     if (pending_count) {
         glDeleteTextures((GLsizei)pending_count, pending_deletes);
@@ -1761,8 +1779,14 @@ static void exec_present(d3d_device *d, int overlay)
         snprintf(name, sizeof name, "frame_%04u.png", d->frame);
         plat_screenshot(name);
     }
+#ifdef __ANDROID__
+    if (last_present_us) android_frame_stats((float)(1e6 / (double)(now0 - last_present_us)), (float)((now0 - frame_begin_us) / 1000.0));
+#endif
     uint64_t swap0 = plat_ticks_us();
     plat_swap();
+#ifdef __ANDROID__
+    gl_reset_state_cache();
+#endif
     prof_swap_us += plat_ticks_us() - swap0;
     if (map_ox || map_oy) {
         glDisable(GL_SCISSOR_TEST);
@@ -1772,6 +1796,9 @@ static void exec_present(d3d_device *d, int overlay)
     }
     uint32_t next = d->frame + 1;
     uint64_t now = plat_ticks_us();
+#ifdef __ANDROID__
+    now0 = now;
+#endif
     if (next % 300 == 0) {
         extern uint64_t d3d_tex_bytes, d3d_buf_bytes;
         extern uint32_t d3d_tex_count;
@@ -1999,6 +2026,9 @@ void gl_buffer_release(d3d_buf *b)
 
 static void rq_execute(rq_arena *a)
 {
+#ifdef __ANDROID__
+    if (plat_frame_begin()) { update_mapping(&rdev); xf_forget(); }
+#endif
     size_t at = 0;
     while (at < a->used) {
         rq_hdr *h = (rq_hdr *)(a->base + at);
@@ -2121,6 +2151,9 @@ void gl_present(d3d_device *d)
 {
     int overlay = tmnt_pad_settings_active();
     if (!gl_rq_mode) {
+#ifdef __ANDROID__
+        if (plat_frame_begin()) { update_mapping(d); xf_forget(); }
+#endif
         d3d_frame_now = d->frame;
         exec_present(d, overlay);
         d->frame++;

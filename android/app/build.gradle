@@ -1,0 +1,92 @@
+plugins { id 'com.android.application' }
+
+def repoRoot = rootProject.projectDir.parentFile
+def dependencyScript = new File(repoRoot, 'tools/android/fetch_deps.py')
+def sdlJava = new File(repoRoot, 'build/android-deps/SDL2/android-project/app/src/main/java')
+// One ABI per APK: -PtmntAbi=arm64-v8a (or armeabi-v7a). The guest is x86-32, but the
+// Android host/runtime may be AArch64; guest addresses remain 32-bit offsets into guest_membase.
+def portAbi = (project.findProperty('tmntAbi') ?: 'armeabi-v7a').toString()
+if (!(portAbi in ['armeabi-v7a', 'arm64-v8a'])) {
+    throw new GradleException('Unsupported tmntAbi: ' + portAbi + ' (use armeabi-v7a or arm64-v8a)')
+}
+// Optional private build: -PtmntEmbeddedDir=build/android-private-game. The directory is
+// generated from the user's own EXE by tools/android/build_private_apk.py and is never committed.
+def embeddedDir = project.hasProperty('tmntEmbeddedDir') ? file(project.property('tmntEmbeddedDir')) : null
+if (embeddedDir != null) {
+    for (String required : ["jniLibs/${portAbi}/libtmnt_code.so", 'assets/tmnt/image.bin', 'assets/tmnt/embedded.json']) {
+        if (!new File(embeddedDir, required).isFile()) {
+            throw new GradleException('Missing embedded game file: ' + new File(embeddedDir, required))
+        }
+    }
+    // Keep clean and game-derived outputs separate so one variant cannot leak into the other.
+    layout.buildDirectory.set(new File(repoRoot, 'build/android-private-app'))
+}
+tasks.register('fetchNativeSources', Exec) {
+    commandLine 'python3', dependencyScript.absolutePath
+}
+preBuild.dependsOn 'fetchNativeSources'
+
+android {
+    namespace 'org.tmnt.port'
+    compileSdk 35
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        applicationId 'org.tmnt.port'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0-android'
+        buildConfigField 'boolean', 'EMBEDDED_GAME', embeddedDir != null ? 'true' : 'false'
+        buildConfigField 'String', 'PORT_ABI', '"' + portAbi + '"'
+        if (embeddedDir != null) {
+            applicationIdSuffix '.private'
+            versionNameSuffix '-private'
+        }
+        // Guest pointers are 32-bit offsets; host pointers are native. Pack/module ABI must match this APK.
+        ndk { abiFilters portAbi }
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=none', '-DANDROID_ARM_NEON=ON', '-DTMNT_ANDROID_ROOT=' + repoRoot.absolutePath
+                cFlags '-std=gnu11', '-fno-strict-aliasing'
+            }
+        }
+    }
+    sourceSets.main {
+        java.srcDir sdlJava
+        assets.srcDir new File(repoRoot, 'build/android-deps/generated-assets')
+        if (embeddedDir != null) {
+            assets.srcDir new File(embeddedDir, 'assets')
+            jniLibs.srcDir new File(embeddedDir, 'jniLibs')
+        }
+    }
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes {
+        debug { debuggable true }
+        release {
+            minifyEnabled false
+            // Set these in ~/.gradle/gradle.properties, never in the repository.
+            if (project.hasProperty('TMNT_RELEASE_STORE')) {
+                signingConfig signingConfigs.create('portRelease') {
+                    storeFile file(project.property('TMNT_RELEASE_STORE'))
+                    storePassword project.property('TMNT_RELEASE_PASSWORD')
+                    keyAlias project.property('TMNT_RELEASE_ALIAS')
+                    keyPassword project.property('TMNT_RELEASE_KEY_PASSWORD')
+                }
+            }
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging false
+            if (embeddedDir != null) {
+                // Private builds verify exact packaged hashes; do not strip the embedded module/runtime.
+                keepDebugSymbols.add('**/libtmnt_code.so')
+                keepDebugSymbols.add('**/libtmnt_runtime.so')
+            }
+        }
+    }
+    lint { lintConfig file('lint.xml'); abortOnError true; disable 'MissingTranslation' }
+}

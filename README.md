@@ -99,6 +99,22 @@ This writes 18 `.avc` files (about 450 MB) to `build/movies/`, each checked fram
 them to `ux0:data/TMNT2003/movies/`. Only the picture is converted: the sound still comes from the game's own files.
 Without the converted movies the game falls back to a software decoder, which is choppy on the Vita.
 
+## Android
+
+[![Android APK](https://github.com/Player124413/TMNT-2003-PSVita-Port/actions/workflows/android.yml/badge.svg?branch=arena%2F02959fec-tmnt-2003-psvita-port)](https://github.com/Player124413/TMNT-2003-PSVita-Port/actions/workflows/android.yml)
+
+
+An unofficial Android port (launcher, editable multitouch controls, GLES2/gl4es rendering, performance profiles)
+lives in `android/`. CI: `.github/workflows/android.yml` builds and verifies game-data-free APKs for `arm64-v8a` and `armeabi-v7a`. It requires an ARM Android 8+ device and the user's own supported PC game; choose the APK/pack matching the device ABI.
+The clean APK contains no game code or data. In GitHub Actions, **Android APK → Run workflow** also accepts an
+optional `game_zip_url`: by default it downloads the user's installed PC game ZIP, recompiles it, and publishes a matching
+`TMNT.tmnt.zip` artifact (backed by `.github/workflows/android-game-pack.yml`). That game-derived artifact is
+**public** and requires explicit confirmation. With `private_apk`, the same URL builds an embedded APK with
+`tmnt_code.so` and `image.bin` inside (no full media data); the launcher then imports only the installed PC game's data.
+In a private repository that artifact is access-controlled; in a public repository it is public and also requires
+`confirm_public_artifact`. Locally, `tools/android/build_private_apk.py` builds the same embedded APK without uploading anything.
+See [docs/ANDROID.md](docs/ANDROID.md) for build/import instructions, the URL workflows, the ETC2/DXT explanation and the current device-testing status.
+
 ## Building from source
 
 1. Extract the game with `innoextract --collisions=rename` into `game/`. The English executable is

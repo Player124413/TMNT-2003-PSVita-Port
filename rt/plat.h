@@ -6,6 +6,28 @@
 
 #ifdef __vita__
 #include <vitaGL.h>
+#elif defined(__ANDROID__)
+#include <GL/gl.h>
+#include <GL/glext.h>
+#ifndef GL_GLEXT_PROTOTYPES
+/* gl4es supplies these GLES 1.5/ES2 entry points (VBOs, FBOs, blend equations). */
+GLAPI void GLAPIENTRY glGenBuffers(GLsizei, GLuint *);
+GLAPI void GLAPIENTRY glDeleteBuffers(GLsizei, const GLuint *);
+GLAPI void GLAPIENTRY glBindBuffer(GLenum, GLuint);
+GLAPI void GLAPIENTRY glBufferData(GLenum, GLsizeiptr, const GLvoid *, GLenum);
+GLAPI void GLAPIENTRY glGenFramebuffers(GLsizei, GLuint *);
+GLAPI void GLAPIENTRY glDeleteFramebuffers(GLsizei, const GLuint *);
+GLAPI void GLAPIENTRY glBindFramebuffer(GLenum, GLuint);
+GLAPI void GLAPIENTRY glFramebufferTexture2D(GLenum, GLenum, GLenum, GLuint, GLint);
+GLAPI void GLAPIENTRY glFramebufferRenderbuffer(GLenum, GLenum, GLenum, GLuint);
+GLAPI GLenum GLAPIENTRY glCheckFramebufferStatus(GLenum);
+GLAPI void GLAPIENTRY glGenRenderbuffers(GLsizei, GLuint *);
+GLAPI void GLAPIENTRY glDeleteRenderbuffers(GLsizei, const GLuint *);
+GLAPI void GLAPIENTRY glBindRenderbuffer(GLenum, GLuint);
+GLAPI void GLAPIENTRY glRenderbufferStorage(GLenum, GLenum, GLsizei, GLsizei);
+GLAPI void GLAPIENTRY glBlendEquation(GLenum);
+GLAPI void GLAPIENTRY glReadBuffer(GLenum);
+#endif
 #else
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl.h>
@@ -36,7 +58,7 @@ void plat_gl_thread(int take);
 void plat_power_info(int *arm, int *gpu, int *battery);
 /* Starts stereo S16 output pulling from `mix`; returns the output rate. */
 int plat_audio_start(void (*mix)(int16_t *out, int frames));
-#ifdef __vita__
+#if defined(__vita__) || defined(__ANDROID__)
 /* Shows `msg` in a system message box until the user closes it, then ends the app. */
 void plat_fatal(const char *msg) __attribute__((noreturn));
 #endif

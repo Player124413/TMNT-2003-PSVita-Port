@@ -6,6 +6,12 @@
 
 #include <stdint.h>
 
+#ifdef __ANDROID__
+#define RT_RECURSIVE_MUTEX_INITIALIZER PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
+#else
+#define RT_RECURSIVE_MUTEX_INITIALIZER PTHREAD_RECURSIVE_MUTEX_INITIALIZER
+#endif
+
 /* Registers the calling thread for the [cpu] line (plat_vita.c; nothing on the Mac), with a name when given. */
 void plat_thread_label(const char *name);
 
@@ -66,7 +72,14 @@ static inline void rt_cond_init(rt_cond *c)
     pthread_mutexattr_init(&a);
     pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&c->mutex, &a);
-    pthread_cond_init(&c->cond, NULL);
+    pthread_condattr_t ca;
+    pthread_condattr_init(&ca);
+#ifndef __APPLE__
+    /* Changing the wall clock must not change game timers or thread timeouts. */
+    pthread_condattr_setclock(&ca, CLOCK_MONOTONIC);
+#endif
+    pthread_cond_init(&c->cond, &ca);
+    pthread_condattr_destroy(&ca);
 }
 static inline void rt_cond_lock(rt_cond *c) { pthread_mutex_lock(&c->mutex); }
 static inline void rt_cond_unlock(rt_cond *c) { pthread_mutex_unlock(&c->mutex); }
@@ -76,7 +89,11 @@ static inline int rt_cond_wait_ms(rt_cond *c, uint32_t ms)
     if (ms == 0xFFFFFFFFU)
         return pthread_cond_wait(&c->cond, &c->mutex) == 0;
     struct timespec dl;
+    #ifdef __APPLE__
     clock_gettime(CLOCK_REALTIME, &dl);
+#else
+    clock_gettime(CLOCK_MONOTONIC, &dl);
+#endif
     uint64_t ns = (uint64_t)dl.tv_nsec + (uint64_t)ms * 1000000ULL;
     dl.tv_sec += (time_t)(ns / 1000000000ULL);
     dl.tv_nsec = (long)(ns % 1000000000ULL);
@@ -90,10 +107,28 @@ static inline uint64_t rt_now_us(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000U;
 }
+#ifdef __ANDROID__
+#include <sys/resource.h>
+#include <sys/syscall.h>
+static inline int rt_thread_os_id(void) { return (int)syscall(SYS_gettid); }
+static inline void rt_thread_set_priority(int os_id, int win_prio)
+{
+    if (!os_id) return;
+    /* Nice values, not real-time priorities or fixed big-core affinity: let Android schedule little/big cores. */
+    int nice = win_prio >= 15 ? -4 : win_prio <= -15 ? 10 : -win_prio / 2;
+    setpriority(PRIO_PROCESS, (id_t)os_id, nice);
+}
+static inline void rt_thread_place_self(int main_core, int win_prio)
+{
+    (void)main_core;
+    rt_thread_set_priority(rt_thread_os_id(), win_prio);
+}
+#else
 /* The Mac's scheduler time-slices threads: placement and priorities are left to it. */
 static inline int rt_thread_os_id(void) { return 0; }
 static inline void rt_thread_set_priority(int os_id, int win_prio) { (void)os_id; (void)win_prio; }
 static inline void rt_thread_place_self(int main_core, int win_prio) { (void)main_core; (void)win_prio; }
+#endif
 #endif
 
 #endif

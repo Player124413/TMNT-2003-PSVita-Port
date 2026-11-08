@@ -1,0 +1,12 @@
+{
+  "SDL2": {
+    "url": "https://codeload.github.com/libsdl-org/SDL/tar.gz/5d249570393f7a37e037abf22cd6012a4cc56a71",
+    "sha256": "10f1194f8d2e4a73ca1c7c553b3189d0b68ab9ef3544e8d2a268e4429456b373",
+    "strip_components": 1
+  },
+  "gl4es": {
+    "url": "https://codeload.github.com/ptitSeb/gl4es/tar.gz/bc4314d8369f169d3fa81c5ed1b46b3dba4e74a5",
+    "sha256": "2ef4d54c58d1e9db319bb8f91509b72effe3c5229096a0c6d39e1b2c26bdfef3",
+    "strip_components": 1
+  }
+}

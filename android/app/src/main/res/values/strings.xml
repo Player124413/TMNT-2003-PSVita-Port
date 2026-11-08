@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TMNT 2003</string>
+    <string name="subtitle">ANDROID PORT · UNOFFICIAL</string>
+    <string name="subtitle_private">ANDROID PRIVATE BUILD · UNOFFICIAL</string>
+    <string name="hero">TURTLE POWER.\nIN YOUR POCKET.</string>
+    <string name="hero_body">Your game. Your controls. No downloaded game data.</string>
+    <string name="play">Play</string>
+    <string name="import_data">Import game pack</string>
+    <string name="replace_data">Replace game pack</string>
+    <string name="import_pc_data">Import installed PC game</string>
+    <string name="replace_pc_data">Replace PC game data</string>
+    <string name="import_zip">ZIP of the installed game</string>
+    <string name="import_folder">Game folder on this device</string>
+    <string name="embedded_ready_body">Ready to launch. Translated code and image.bin are built into this private APK; only PC data was imported.</string>
+    <string name="embedded_not_ready_body">Import a ZIP or folder of the same installed PC game used to build this APK. No code pack or computer-side conversion is needed.</string>
+    <string name="edit_controls">Edit touch controls</string>
+    <string name="settings">Performance &amp; picture</string>
+    <string name="ready">Game pack installed</string>
+    <string name="not_ready">Game pack needed</string>
+    <string name="ready_body">Ready to launch. The APK contains port code only.</string>
+    <string name="not_ready_body">Build a .tmnt.zip pack on your computer from your own PC game, then import it here. See docs/ANDROID.md.</string>
+    <string name="unsupported_abi">This APK was built for a different CPU ABI. Install the arm64-v8a APK on 64-bit-only phones, or the armeabi-v7a APK on older 32-bit phones.</string>
+    <string name="legal">Unofficial port · Konami / Nickelodeon are not affiliated.\nYou must own the supported PC version. Game code and data stay on your device.</string>
+    <string name="profile">Performance profile</string>
+    <string name="balanced">Balanced · recommended</string>
+    <string name="battery">Cool &amp; quiet · 30 FPS cap</string>
+    <string name="performance">Performance · uncapped</string>
+    <string name="picture">Picture</string>
+    <string name="aspect">Keep 4:3 proportions</string>
+    <string name="render_scale">Internal resolution</string>
+    <string name="sound">Sound</string>
+    <string name="perf">Show FPS and frame time</string>
+    <string name="settings_note">The original game often draws at 30 FPS. Performance mode removes the port\'s frame cap; it does not rewrite game logic or guarantee 60 FPS. Native resolution costs more battery.</string>
+    <string name="controls">Touch controls</string>
+    <string name="opacity">Overall opacity</string>
+    <string name="haptics">Haptic feedback</string>
+    <string name="deadzone">Stick dead zone</string>
+    <string name="save">Save layout</string>
+    <string name="discard">Discard</string>
+    <string name="reset">Reset layout</string>
+    <string name="undo">Undo</string>
+    <string name="editor_hint">Drag a button to move it. Select it to change size, opacity or action. The layout uses safe areas and adapts to the screen.</string>
+    <string name="selected">Selected control</string>
+    <string name="size">Size</string>
+    <string name="action">Action</string>
+    <string name="resume">Resume</string>
+    <string name="pause">Pause</string>
+    <string name="edit">Edit layout</string>
+    <string name="back_launcher">Launcher</string>
+    <string name="saved">Layout saved</string>
+    <string name="importing">Checking and importing…</string>
+    <string name="cancel">Cancel</string>
+    <string name="error">Could not import</string>
+    <string name="ok">OK</string>
+    <string name="licenses">Open-source licenses</string>
+    <string name="log">Share diagnostic log</string>
+    <string name="delete">Remove game pack</string>
+    <string name="delete_confirm">Remove imported game files? Your saves and touch layout will be kept.</string>
+    <string name="import_ok">Game pack installed. Ready to play.</string>
+    <string name="free_space">Not enough free space for the game pack and a 512 MB safety margin.</string>
+    <string name="weak">Attack</string><string name="strong">Heavy</string><string name="jump">Jump</string>
+    <string name="shuriken">Shuriken</string><string name="dash">Dash</string><string name="switch_turtle">Switch</string>
+    <string name="juggle">Juggle</string><string name="special">Special</string><string name="start">Start</string>
+    <string name="stick">Move</string>
+</resources>

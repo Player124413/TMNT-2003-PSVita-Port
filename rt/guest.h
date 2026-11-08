@@ -50,6 +50,17 @@
 #include <math.h>
 #include <setjmp.h>
 #include <stdint.h>
+
+/* Guest pointers are stored as uint32_t throughout the translated code and host runtime.
+ * On Android AArch64 they are offsets into guest_membase, not truncated host pointers;
+ * host-owned pointers in CPU/runtime structures remain native uintptr_t/void *. The Vita
+ * ELF loader still maps the module into a 32-bit address space and requires a 32-bit host. */
+#if defined(__vita__)
+_Static_assert(sizeof(void *) == 4, "TMNT requires a 32-bit Vita host");
+#elif defined(__ANDROID__)
+_Static_assert(sizeof(void *) == 4 || sizeof(void *) == 8,
+               "TMNT Android supports armeabi-v7a and arm64-v8a hosts");
+#endif
 #include <string.h>
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -311,9 +322,10 @@ typedef struct guest_import {
 } guest_import;
 
 /* ------------------------------------------------------------- memory ---- */
-/* Guest address == host address, so these are plain loads and stores. They
- * exist as functions so that a debug build can range-check every access
- * without the translator emitting anything different. */
+/* A guest address is a 32-bit offset into guest_membase. These are plain loads
+ * and stores after adding the native base. They exist as functions so that a
+ * debug build can range-check every access without the translator emitting
+ * anything different. */
 
 #ifdef GUEST_CHECKED_MEMORY
 void guest_check(uint32_t addr, uint32_t size, int write);

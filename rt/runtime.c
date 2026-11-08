@@ -18,8 +18,13 @@
 #include "osdep.h"
 #include "runtime.h"
 #include "par.h"
-#ifdef __vita__
+#if defined(__vita__) || defined(__ANDROID__)
 #include "plat.h"
+#endif
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#include "android/runtime_android.h"
 #endif
 
 uint8_t *guest_membase;
@@ -47,7 +52,7 @@ extern const guest_import_slot guest_import_slots[];
 extern const uint32_t guest_import_count;
 #endif
 
-static pthread_mutex_t heap_lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
+static pthread_mutex_t heap_lock = RT_RECURSIVE_MUTEX_INITIALIZER;
 static int trace_imports;
 
 void rt_log(const char *fmt, ...)
@@ -57,6 +62,11 @@ void rt_log(const char *fmt, ...)
     vfprintf(stderr, fmt, ap);
     va_end(ap);
     fflush(stderr);
+#ifdef __ANDROID__
+    va_start(ap, fmt);
+    __android_log_vprint(ANDROID_LOG_INFO, "TMNT", fmt, ap);
+    va_end(ap);
+#endif
 }
 
 void guest_fault(CPU *__restrict c, uint32_t addr, const char *what)
@@ -734,7 +744,9 @@ static void load_image(const char *path)
     FILE *f = fopen(path, "rb");
     if (!f) {
         rt_log("[rt] cannot open %s\n", path);
-#ifdef __vita__
+#ifdef __ANDROID__
+        plat_fatal("Game files are missing. Import a pack made with tools/make_android_files.py in the launcher.");
+#elif defined(__vita__)
         plat_fatal("The game image (image.bin) is missing from ux0:data/TMNT2003/.\n\n"
                    "Make it on your computer from your copy of the game with tools/make_vita_files.py (see the README), then copy it there.");
 #endif
@@ -744,7 +756,9 @@ static void load_image(const char *path)
     fclose(f);
     if (got != guest_image_size) {
         rt_log("[rt] short image %s: %zu of %u bytes\n", path, got, guest_image_size);
-#ifdef __vita__
+#ifdef __ANDROID__
+        plat_fatal("image.bin is incomplete or does not match tmnt_code.so. Re-import a pack made by one run of tools/make_android_files.py.");
+#elif defined(__vita__)
         plat_fatal("image.bin in ux0:data/TMNT2003/ is incomplete or does not match tmnt_code.so.\n\n"
                    "Copy both files again from the same run of tools/make_vita_files.py.");
 #endif
@@ -771,7 +785,7 @@ static void init_teb(CPU *c)
     (void)c;
 }
 
-#ifndef __vita__
+#if !defined(__vita__) && !defined(__ANDROID__)
 #include <execinfo.h>
 #include <signal.h>
 /* Host crash report: the faulting address as a guest address when it lies in the guest block, plus the native stack (sub_RVA names). */
@@ -783,9 +797,18 @@ static void crash_handler(int sig, siginfo_t *info, void *ctx)
     int n = snprintf(line, sizeof line, "[crash] signal %d at host %p (guest %08lx%s)\n", sig, info->si_addr,
                      (unsigned long)(a - base), a >= base && a < base + GUEST_SPACE ? "" : ", outside the guest block");
     write(2, line, (size_t)n);
+#if defined(__ANDROID__)
+    /* Bionic only exposes execinfo from API 33; never intercept ART's crash handler on older devices. */
+#if __ANDROID_API__ >= 33
     void *frames[48];
     int count = backtrace(frames, 48);
     backtrace_symbols_fd(frames, count, 2);
+#endif
+#else
+    void *frames[48];
+    int count = backtrace(frames, 48);
+    backtrace_symbols_fd(frames, count, 2);
+#endif
     _exit(128 + sig);
 }
 #endif
@@ -830,9 +853,9 @@ static void *alloc_guest_space(void)
 }
 #endif
 
-static int game_main(int argc, char **argv)
+int game_main(int argc, char **argv)
 {
-#ifndef __vita__
+#if !defined(__vita__) && !defined(__ANDROID__)
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
     sa.sa_sigaction = crash_handler;
@@ -841,6 +864,9 @@ static int game_main(int argc, char **argv)
     sigaction(SIGBUS, &sa, NULL);
 #endif
     const char *image = (argc > 1) ? argv[1] : "image.bin";
+#ifdef __ANDROID__
+    android_load_settings();
+#endif
     trace_imports = getenv("TMNT_TRACE_IMPORTS") && atoi(getenv("TMNT_TRACE_IMPORTS"));
     trace_init();
     void *m = alloc_guest_space();
@@ -851,7 +877,14 @@ static int game_main(int argc, char **argv)
     guest_membase = m;
     heap_init(GUEST_HEAP_LO, GUEST_SPACE);
 #ifdef TMNT_CODE_SO
+#ifdef __ANDROID__
+    /* Private APKs ship libtmnt_code.so in lib/armeabi-v7a; clean APKs import tmnt_code.so. */
+    const char *code_path = android_game_path("tmnt_code.so");
+    if (access(code_path, F_OK) != 0) code_path = "libtmnt_code.so";
+    code_so_load(code_path);
+#else
     code_so_load("tmnt_code.so");
+#endif
 #endif
     load_image(image);
 
@@ -929,7 +962,7 @@ int main(void)
     rt_log("[vita] game exited (%d)\n", game_exit);
     return game_exit;
 }
-#else
+#elif !defined(__ANDROID__)
 int main(int argc, char **argv)
 {
     return game_main(argc, argv);

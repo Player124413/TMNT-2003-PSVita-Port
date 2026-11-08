@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original geometric launcher artwork; no game artwork is distributed. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#244C32" android:pathData="M54,19L80,34L86,65L70,87L38,87L22,65L28,34Z" />
+    <path android:strokeColor="#8FE36A" android:strokeWidth="3" android:fillColor="#00000000" android:pathData="M54,25L54,83M29,39L79,69M79,39L29,69M28,54L80,54" />
+    <path android:fillColor="#F0BC58" android:pathData="M20,42L88,35L88,48L20,55Z" />
+    <path android:fillColor="#101713" android:pathData="M34,44L45,43L42,49L35,50ZM63,41L74,40L73,46L66,47Z" />
+</vector>
