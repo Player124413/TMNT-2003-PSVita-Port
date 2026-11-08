@@ -104,12 +104,14 @@ def check(condition, message):
         raise SystemExit(text)
 
 
-def elf32_arm(path):
+def elf_android(path, abi):
+    cfg = android.abi_config(abi)
     with open(path, "rb") as f:
-        data = f.read(52)
-    check(len(data) >= 52 and data[:6] == b"\x7fELF\x01\x01", str(path) + " is not ELF32 little-endian")
+        data = f.read(64)
+    check(len(data) >= 52 and data[:4] == b"\x7fELF" and data[5] == 1, str(path) + " is not little-endian ELF")
+    check(data[4] == cfg["elf_class"], str(path) + " has wrong ELF class for " + abi)
     check(struct.unpack_from("<H", data, 16)[0] == 3, str(path) + " is not ET_DYN")
-    check(struct.unpack_from("<H", data, 18)[0] == 40, str(path) + " is not ARM")
+    check(struct.unpack_from("<H", data, 18)[0] == cfg["machine"], str(path) + " has wrong machine for " + abi)
 
 
 def zip_hash(archive, name):
@@ -122,7 +124,7 @@ def zip_hash(archive, name):
     return size, h.hexdigest()
 
 
-def synthetic_module(clang, runtime, work, soname=None):
+def synthetic_module(clang, runtime, work, soname=None, abi=android.ABI):
     source = work / "synthetic_module.c"
     source.write_text(r'''
 #include <stdint.h>
@@ -139,20 +141,21 @@ const uint32_t guest_import_count;
 TMNT_CODE_DIRECT(DECL)
 #undef DECL
 ''', encoding="utf-8")
-    flags = [str(clang), "--target=armv7a-linux-androideabi26", *android.CFLAGS, "-I", str(ROOT / "rt")]
+    cfg = android.abi_config(abi)
+    flags = [str(clang), "--target=" + cfg["target"], *android.cflags(abi), "-I", str(ROOT / "rt")]
     objects = []
     for index, src in enumerate((source, ROOT / "rt/code_so_entry.c")):
         obj = work / ("synthetic-%d.o" % index)
         run(flags + ["-c", str(src), "-o", str(obj)])
         objects.append(obj)
     module = work / (soname or "tmnt_code.so")
-    command = [str(clang), "--target=armv7a-linux-androideabi26", "-shared", "-Wl,-z,max-page-size=16384",
+    command = [str(clang), "--target=" + cfg["target"], "-shared", "-Wl,-z,max-page-size=16384",
                "-Wl,-z,now", "-Wl,--no-undefined"]
     if soname:
         command += ["-Wl,-soname," + soname]
     command += ["-o", str(module), *map(str, objects), str(runtime), "-lm"]
     run(command)
-    elf32_arm(module)
+    elf_android(module, abi)
     return module
 
 
@@ -189,7 +192,6 @@ def main():
             except (ValueError, UnicodeError, embedded.EmbeddedGameError) as exc:
                 check(False, "invalid embedded manifest: " + str(exc))
             check("assets/tmnt/image.bin" in names, "embedded image.bin asset missing")
-            check("lib/armeabi-v7a/libtmnt_code.so" in names, "embedded libtmnt_code.so missing")
 
     print(output(tool_command(bt, "apksigner") + ["verify", "--verbose", "--print-certs", str(apk)]))
     run(tool_command(bt, "zipalign") + ["-c", "-p", "-v", "4", str(apk)], stdout=subprocess.DEVNULL)
@@ -209,16 +211,22 @@ def main():
     require(badge("targetSdkVersion"), "35", "targetSdk")
     require(badge("launchable-activity"), "org.tmnt.port.LauncherActivity", "launcher activity")
     check("uses-permission: name='android.permission.INTERNET'" not in badging, "APK must not request INTERNET")
-    require(badge("native-code"), "armeabi-v7a", "native ABI")
+    abi = badge("native-code")
+    check(abi in android.ABIS, "unsupported native ABI: " + repr(abi))
+    if embedded_mode:
+        check(manifest["abi"] == abi, "embedded manifest ABI does not match APK")
+    if abi == "arm64-v8a":
+        # Android 15+ 16 KiB-page devices require uncompressed native libraries to be 16 KiB aligned.
+        run(tool_command(bt, "zipalign") + ["-c", "-P", "16", "-v", "4", str(apk)], stdout=subprocess.DEVNULL)
 
     with zipfile.ZipFile(apk) as z:
         names = z.namelist()
         check("classes.dex" in names, "classes.dex missing")
         check("AndroidManifest.xml" in names and "resources.arsc" in names, "manifest/resources missing")
         libs = sorted(n for n in names if n.startswith("lib/") and n.endswith(".so"))
-        expected_libs = ["lib/armeabi-v7a/libSDL2.so", "lib/armeabi-v7a/libtmnt_runtime.so"]
+        expected_libs = ["lib/" + abi + "/libSDL2.so", "lib/" + abi + "/libtmnt_runtime.so"]
         if embedded_mode:
-            expected_libs.insert(1, "lib/armeabi-v7a/libtmnt_code.so")
+            expected_libs.insert(1, "lib/" + abi + "/libtmnt_code.so")
         check(libs == expected_libs, "unexpected native libraries: " + repr(libs))
         forbidden = {".exe", ".dat", ".afs"}
         check(not any(Path(n).suffix.lower() in forbidden for n in names), "PC game data found inside APK")
@@ -237,12 +245,17 @@ def main():
         for name in libs:
             target = libdir / Path(name).name
             target.write_bytes(z.read(name))
-            elf32_arm(target)
+            elf_android(target, abi)
+            if abi == "arm64-v8a":
+                segments = output([readelf, "-l", str(target)])
+                loads = [line.split() for line in segments.splitlines() if line.strip().startswith("LOAD")]
+                check(loads and all(parts[-1] == "0x4000" for parts in loads),
+                      name + " is not linked for 16 KiB pages")
         if embedded_mode:
             size, digest = zip_hash(z, "assets/tmnt/image.bin")
             check(size == manifest["image"]["size"], "embedded image size mismatch")
             check(digest == manifest["image"]["sha256"], "embedded image SHA-256 mismatch")
-            size, digest = zip_hash(z, "lib/armeabi-v7a/libtmnt_code.so")
+            size, digest = zip_hash(z, "lib/" + abi + "/libtmnt_code.so")
             check(size == manifest["code"]["size"], "embedded code size mismatch")
             check(digest == manifest["code"]["sha256"], "embedded code SHA-256 mismatch")
 
@@ -269,7 +282,7 @@ def main():
     else:
         with tempfile.TemporaryDirectory(prefix="tmnt-apk-verify-", dir=args.work) as tmp:
             work = Path(tmp)
-            module = synthetic_module(clang, runtime, work)
+            module = synthetic_module(clang, runtime, work, abi=abi)
             module_dynamic = output([readelf, "-d", str(module)])
             check("libtmnt_runtime.so" in module_dynamic, "synthetic module does not link against APK runtime")
             check("tmnt_code" in output([nm, "-D", str(module)]), "synthetic module does not export tmnt_code")
@@ -279,7 +292,7 @@ def main():
             for name in ["image.bin", *android.vita.DATA_FILES.values()]:
                 (stage / name).write_bytes(("synthetic-no-game-data:" + name).encode() * 32)
             pack = args.work / "synthetic-pack.tmnt.zip"
-            manifest = android.write_pack(stage, pack)
+            manifest = android.write_pack(stage, pack, abi)
             with zipfile.ZipFile(pack) as z:
                 check(z.namelist()[0] == "pack.json", "synthetic pack manifest is not first")
                 check(json.loads(z.read("pack.json")) == manifest, "synthetic pack manifest mismatch")

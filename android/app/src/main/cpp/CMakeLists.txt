@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 project(TMNTAndroid LANGUAGES C)
-if(NOT ANDROID_ABI STREQUAL "armeabi-v7a")
-    message(FATAL_ERROR "The guest ABI is 32-bit ARM. armeabi-v7a is the only supported Android ABI.")
+if(NOT ANDROID_ABI STREQUAL "armeabi-v7a" AND NOT ANDROID_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "Unsupported Android ABI: ${ANDROID_ABI}. Use armeabi-v7a or arm64-v8a.")
+endif()
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    # Android 15+ 16 KiB-page devices: make every native object (SDL/gl4es/runtime) 16 KiB compatible.
+    add_link_options(-Wl,-z,max-page-size=16384)
 endif()
 set(ROOT "${TMNT_ANDROID_ROOT}")
 set(DEPS "${ROOT}/build/android-deps")

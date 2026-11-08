@@ -2,7 +2,7 @@
 """Manifest and staging helpers for private Android APKs with embedded game code/image.
 
 The generated directory is a Gradle input, not a repository artifact:
-  jniLibs/armeabi-v7a/libtmnt_code.so
+  jniLibs/<abi>/libtmnt_code.so
   assets/tmnt/image.bin
   assets/tmnt/embedded.json
 """
@@ -19,6 +19,7 @@ import make_vita_files as vita
 
 FORMAT = 1
 ABI = "armeabi-v7a"
+SUPPORTED_ABIS = {"armeabi-v7a", "arm64-v8a"}
 MAX_TOTAL = 3 * 1024 * 1024 * 1024
 CHUNK = 1 << 20
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -54,7 +55,9 @@ def compute_id(manifest):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def make_manifest(code, image, runtime, exe_sha1, game_folder):
+def make_manifest(code, image, runtime, exe_sha1, game_folder, abi=ABI):
+    if abi not in SUPPORTED_ABIS:
+        raise EmbeddedGameError("unsupported Android ABI: " + str(abi))
     game_folder = Path(game_folder)
     data = {}
     total = 0
@@ -74,7 +77,7 @@ def make_manifest(code, image, runtime, exe_sha1, game_folder):
             raise EmbeddedGameError("PC game data exceeds 3 GiB")
     manifest = {
         "format": FORMAT,
-        "abi": ABI,
+        "abi": abi,
         "exe_sha1": exe_sha1,
         "image": file_meta(image, "image.bin"),
         "code": file_meta(code, "libtmnt_code.so"),
@@ -91,7 +94,7 @@ def validate_manifest(manifest, check_supported_exe=True):
         raise EmbeddedGameError("embedded manifest is not an object")
     if type(manifest.get("format")) is not int or manifest["format"] != FORMAT:
         raise EmbeddedGameError("wrong embedded manifest format")
-    if manifest.get("abi") != ABI:
+    if manifest.get("abi") not in SUPPORTED_ABIS:
         raise EmbeddedGameError("wrong embedded manifest ABI")
     for key, pattern in (("id", HEX64), ("exe_sha1", HEX40), ("runtime_sha256", HEX64)):
         value = manifest.get(key)
@@ -142,7 +145,7 @@ def _validate_file_meta(meta):
 def write_directory(directory, module, image, manifest):
     validate_manifest(manifest)
     directory = Path(directory)
-    libs = directory / "jniLibs" / ABI
+    libs = directory / "jniLibs" / manifest["abi"]
     assets = directory / "assets" / "tmnt"
     libs.mkdir(parents=True, exist_ok=True)
     assets.mkdir(parents=True, exist_ok=True)

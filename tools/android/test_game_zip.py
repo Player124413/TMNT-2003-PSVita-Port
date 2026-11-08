@@ -211,15 +211,15 @@ class ZipTests(unittest.TestCase):
 
 
 class PackVerifyTests(unittest.TestCase):
-    def stage(self, root):
+    def stage(self, root, abi="armeabi-v7a"):
         stage = root / "stage"
         stage.mkdir()
         for name in ["image.bin", "tmnt_code.so", *android.vita.DATA_FILES.values()]:
             (stage / name).write_bytes(name.encode() * 8)
         header = bytearray(64)
-        header[:6] = b"\x7fELF\x01\x01"
+        header[:6] = b"\x7fELF" + bytes([1 if abi == "armeabi-v7a" else 2, 1])
         struct.pack_into("<H", header, 16, 3)
-        struct.pack_into("<H", header, 18, 40)
+        struct.pack_into("<H", header, 18, 40 if abi == "armeabi-v7a" else 183)
         (stage / "tmnt_code.so").write_bytes(header)
         return stage
 
@@ -232,6 +232,13 @@ class PackVerifyTests(unittest.TestCase):
             root = Path(tmp)
             pack = root / "TMNT.tmnt.zip"
             android.write_pack(self.stage(root), pack)
+            self.run_verify(pack)
+
+    def test_arm64_synthetic_pack_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack = root / "TMNT.tmnt.zip"
+            android.write_pack(self.stage(root, "arm64-v8a"), pack, "arm64-v8a")
             self.run_verify(pack)
 
     def test_missing_entry_fails(self):

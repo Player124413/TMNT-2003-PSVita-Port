@@ -13,7 +13,7 @@
     <string name="ready">Файлы игры установлены</string><string name="not_ready">Нужны файлы игры</string>
     <string name="ready_body">Можно запускать. APK содержит только код порта.</string>
     <string name="not_ready_body">Создай пакет .tmnt.zip на компьютере из своей PC-версии игры и импортируй здесь. Инструкция: docs/ANDROID.md.</string>
-    <string name="unsupported_abi">Порту нужен 32-битный ARM-процессор. Это устройство поддерживает только 64-битные приложения.</string>
+    <string name="unsupported_abi">Этот APK собран для другой ABI процессора. Для 64-битных телефонов установи arm64-v8a APK, для старых 32-битных — armeabi-v7a APK.</string>
     <string name="legal">Неофициальный порт · не связан с Konami и Nickelodeon.\nНужна собственная поддерживаемая копия PC-игры. Код и данные игры остаются на твоём устройстве.</string>
     <string name="profile">Профиль производительности</string><string name="balanced">Баланс · рекомендуется</string>
     <string name="battery">Прохладный · до 30 FPS</string><string name="performance">Максимум · без ограничения</string>

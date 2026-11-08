@@ -51,6 +51,23 @@ class EmbeddedTests(unittest.TestCase):
             self.assertEqual(staged["code"]["sha256"], embedded.digest(out / "jniLibs/armeabi-v7a/libtmnt_code.so"))
             self.assertEqual(staged["image"]["sha256"], embedded.digest(out / "assets/tmnt/image.bin"))
 
+    def test_arm64_manifest_and_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            game, code, image, runtime = self.stage(root)
+            manifest = embedded.make_manifest(code, image, runtime, vita.EXE_SHA1, game, abi="arm64-v8a")
+            self.assertEqual(manifest["abi"], "arm64-v8a")
+            out = root / "embedded64"
+            embedded.write_directory(out, code, image, manifest)
+            self.assertTrue((out / "jniLibs/arm64-v8a/libtmnt_code.so").is_file())
+            self.assertFalse((out / "jniLibs/armeabi-v7a/libtmnt_code.so").exists())
+            self.assertEqual(json.loads((out / "assets/tmnt/embedded.json").read_text()), manifest)
+            bad = json.loads(json.dumps(manifest))
+            bad["abi"] = "x86_64"
+            bad["id"] = embedded.compute_id(bad)
+            with self.assertRaises(embedded.EmbeddedGameError):
+                embedded.validate_manifest(bad)
+
     def test_id_binds_code_image_runtime_and_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

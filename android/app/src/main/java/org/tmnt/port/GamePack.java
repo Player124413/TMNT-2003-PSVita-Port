@@ -27,6 +27,8 @@ public final class GamePack {
         FILES = Collections.unmodifiableSet(all);
     }
     private GamePack() {}
+    /** ABI of this APK. A game module/pack must match it exactly; ARM32 code cannot load in an ARM64 process. */
+    public static String abi() { return BuildConfig.PORT_ABI; }
     public static Set<String> requiredFiles() { return BuildConfig.EMBEDDED_GAME ? DATA_FILES : FILES; }
     public static File root(Context c) { return c.getFilesDir(); }
     public static File marker(Context c) { return new File(root(c), "pack.json"); }
@@ -34,7 +36,7 @@ public final class GamePack {
         try {
             JSONObject j = new JSONObject(read(marker(c), 65536));
             boolean embedded = BuildConfig.EMBEDDED_GAME;
-            if (j.getInt("format") != (embedded ? EMBEDDED_FORMAT : FORMAT) || !"armeabi-v7a".equals(j.getString("abi"))) return false;
+            if (j.getInt("format") != (embedded ? EMBEDDED_FORMAT : FORMAT) || !abi().equals(j.getString("abi"))) return false;
             if (embedded && !EmbeddedGame.id(c).equals(j.optString("embedded_id"))) return false;
             JSONObject files = j.getJSONObject("files");
             Set<String> required = requiredFiles();
@@ -73,7 +75,7 @@ public final class GamePack {
     public static void validateManifest(String text) throws Exception {
         if (text.length() > 65536) throw new IllegalArgumentException("Manifest too large");
         JSONObject j = new JSONObject(text);
-        if (j.getInt("format") != FORMAT || !"armeabi-v7a".equals(j.getString("abi")))
+        if (j.getInt("format") != FORMAT || !abi().equals(j.getString("abi")))
             throw new IllegalArgumentException("Wrong pack format or CPU ABI");
         JSONObject files = j.getJSONObject("files"); long total = 0;
         if (files.length() != FILES.size()) throw new IllegalArgumentException("Incomplete or unexpected file list");

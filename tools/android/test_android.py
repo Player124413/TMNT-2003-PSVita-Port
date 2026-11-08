@@ -58,10 +58,36 @@ class PackTests(unittest.TestCase):
             struct.pack_into("<H", header, 18, 40)
             path.write_bytes(header)
             android.validate_module(path)
-            struct.pack_into("<H", header, 18, 62)  # AArch64 is not the guest ABI.
+            struct.pack_into("<H", header, 18, 62)  # x86-64 is not an Android ARM ABI.
             path.write_bytes(header)
             with self.assertRaises(SystemExit):
                 android.validate_module(path)
+
+    def test_module_must_match_requested_abi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tmnt_code.so"
+            arm64 = bytearray(64)
+            arm64[:6] = b"\x7fELF\x02\x01"
+            struct.pack_into("<H", arm64, 16, 3)
+            struct.pack_into("<H", arm64, 18, 183)
+            path.write_bytes(arm64)
+            android.validate_module(path, "arm64-v8a")
+            with self.assertRaises(SystemExit):
+                android.validate_module(path, "armeabi-v7a")
+            x86 = bytearray(arm64)
+            struct.pack_into("<H", x86, 18, 62)
+            path.write_bytes(x86)
+            with self.assertRaises(SystemExit):
+                android.validate_module(path, "arm64-v8a")
+
+    def test_write_pack_records_requested_abi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stage = self.stage(Path(tmp))
+            output = Path(tmp) / "pack.tmnt.zip"
+            manifest = android.write_pack(stage, output, "arm64-v8a")
+            self.assertEqual(manifest["abi"], "arm64-v8a")
+            with zipfile.ZipFile(output) as z:
+                self.assertEqual(json.loads(z.read("pack.json")), manifest)
 
 
 if __name__ == "__main__":

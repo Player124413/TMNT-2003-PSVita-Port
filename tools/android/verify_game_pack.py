@@ -83,7 +83,8 @@ def main():
             fail("manifest is not valid UTF-8 JSON")
         check(isinstance(manifest, dict), "manifest is not a JSON object")
         check(type(manifest.get("format")) is int and manifest.get("format") == 1, "wrong pack format")
-        check(manifest.get("abi") == "armeabi-v7a", "wrong pack ABI")
+        abi = manifest.get("abi")
+        check(abi in android.ABIS, "wrong pack ABI")
         files = manifest.get("files")
         check(isinstance(files, dict) and set(files) == FILES, "manifest file list mismatch")
         total = 0
@@ -102,10 +103,13 @@ def main():
         with tempfile.TemporaryDirectory(prefix="tmnt-pack-verify-") as tmp:
             module = Path(tmp) / "tmnt_code.so"
             with archive.open("tmnt_code.so") as src, module.open("wb") as dst:
-                header = src.read(52)
-                check(len(header) >= 52 and header[:6] == b"\x7fELF\x01\x01", "tmnt_code.so is not ELF32 little-endian")
+                header = src.read(64)
+                cfg = android.abi_config(abi)
+                check(len(header) >= 52 and header[:4] == b"\x7fELF" and header[5] == 1,
+                      "tmnt_code.so is not little-endian ELF")
+                check(header[4] == cfg["elf_class"], "tmnt_code.so has wrong ELF class for " + abi)
                 check(struct.unpack_from("<H", header, 16)[0] == 3, "tmnt_code.so is not ET_DYN")
-                check(struct.unpack_from("<H", header, 18)[0] == 40, "tmnt_code.so is not ARM")
+                check(struct.unpack_from("<H", header, 18)[0] == cfg["machine"], "tmnt_code.so has wrong machine for " + abi)
                 dst.write(header)
                 for block in iter(lambda: src.read(CHUNK), b""):
                     dst.write(block)
@@ -123,7 +127,7 @@ def main():
                 check("libtmnt_runtime.so" in dynamic, "module does not depend on libtmnt_runtime.so")
                 symbols = tool_output([nm, "-D", str(module)])
                 check(re.search(r"\btmnt_code\b", symbols), "module does not export tmnt_code")
-    print("OK: game pack manifest, hashes, sizes and ARM module verified.")
+    print("OK: game pack manifest, hashes, sizes and %s module verified." % abi)
     print("Pack SHA-256:", file_hash(path))
     print("Pack size:", path.stat().st_size)
 

@@ -20,7 +20,7 @@
     <string name="not_ready">Game pack needed</string>
     <string name="ready_body">Ready to launch. The APK contains port code only.</string>
     <string name="not_ready_body">Build a .tmnt.zip pack on your computer from your own PC game, then import it here. See docs/ANDROID.md.</string>
-    <string name="unsupported_abi">This port needs a 32-bit ARM processor (armeabi-v7a). This device supports only 64-bit apps.</string>
+    <string name="unsupported_abi">This APK was built for a different CPU ABI. Install the arm64-v8a APK on 64-bit-only phones, or the armeabi-v7a APK on older 32-bit phones.</string>
     <string name="legal">Unofficial port · Konami / Nickelodeon are not affiliated.\nYou must own the supported PC version. Game code and data stay on your device.</string>
     <string name="profile">Performance profile</string>
     <string name="balanced">Balanced · recommended</string>

@@ -51,6 +51,14 @@ on:
         required: false
         default: false
         type: boolean
+      target_abi:
+        description: "CPU ABI for URL builds; push/PR builds both ABIs"
+        required: false
+        default: arm64-v8a
+        type: choice
+        options:
+          - arm64-v8a
+          - armeabi-v7a
 
 permissions:
   contents: read
@@ -60,7 +68,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ANDROID_ABI: armeabi-v7a
   ANDROID_PLATFORM: android-35
   NDK_VERSION: 27.2.12479018
   CMAKE_VERSION: 3.22.1
@@ -69,10 +76,14 @@ env:
 
 jobs:
   build:
-    name: Build and verify APK (no game data)
+    name: Build and verify APK (${{ matrix.abi }})
     if: github.event_name != 'workflow_dispatch' || inputs.game_zip_url == null || inputs.game_zip_url == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [armeabi-v7a, arm64-v8a]
 
     steps:
       - name: Checkout
@@ -137,14 +148,14 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:assembleDebug
 
       - name: Verify APK and exercise game-pack ABI without game data
         run: python tools/android/verify_apk.py android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Android lint
         working-directory: android
-        run: ./gradlew --no-daemon --stacktrace :app:lintDebug
+        run: ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:lintDebug
 
       - name: Exercise private embedded packaging with a synthetic no-game fixture
         run: |
@@ -160,20 +171,20 @@ jobs:
 
           work = Path("build/ci/embedded-fixture")
           work.mkdir(parents=True, exist_ok=True)
-          runtime = Path("build/android-runtime/armeabi-v7a/libtmnt_runtime.so")
+          runtime = Path("build/android-runtime/${{ matrix.abi }}/libtmnt_runtime.so")
           clang = android.find_ndk(None)
-          module = verify.synthetic_module(clang, runtime, work, soname="libtmnt_code.so")
+          module = verify.synthetic_module(clang, runtime, work, soname="libtmnt_code.so", abi="${{ matrix.abi }}")
           image = work / "image.bin"
           image.write_bytes(b"synthetic-no-game-image" * 64)
           game = work / "game"
           game.mkdir(exist_ok=True)
           for source in vita.DATA_FILES:
               (game / source).write_bytes(("synthetic-no-game-data:" + source).encode() * 32)
-          manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, game)
+          manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, game, abi="${{ matrix.abi }}")
           embedded.write_directory(work / "input", module, image, manifest)
           PY
           cd android
-          ./gradlew --no-daemon --stacktrace -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
           cd ..
           python - <<'PY'
           from pathlib import Path
@@ -191,17 +202,17 @@ jobs:
           apk = Path("build/android-private-app/outputs/apk/debug/app-debug.apk")
           packaged = work / "libtmnt_runtime.packaged.so"
           with zipfile.ZipFile(apk) as z, packaged.open("wb") as out:
-              with z.open("lib/armeabi-v7a/libtmnt_runtime.so") as src:
+              with z.open("lib/${{ matrix.abi }}/libtmnt_runtime.so") as src:
                   shutil.copyfileobj(src, out, 1 << 20)
           clang = android.find_ndk(None)
           relink = work / "relink"
           relink.mkdir(exist_ok=True)
-          module = verify.synthetic_module(clang, packaged, relink, soname="libtmnt_code.so")
-          manifest = embedded.make_manifest(module, work / "image.bin", packaged, vita.EXE_SHA1, work / "game")
+          module = verify.synthetic_module(clang, packaged, relink, soname="libtmnt_code.so", abi="${{ matrix.abi }}")
+          manifest = embedded.make_manifest(module, work / "image.bin", packaged, vita.EXE_SHA1, work / "game", abi="${{ matrix.abi }}")
           embedded.write_directory(work / "input", module, work / "image.bin", manifest)
           PY
           cd android
-          ./gradlew --no-daemon --stacktrace -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
           cd ..
           python tools/android/verify_apk.py build/android-private-app/outputs/apk/debug/app-debug.apk
 
@@ -213,8 +224,8 @@ jobs:
             cp android/app/build/outputs/apk/debug/app-debug.apk build/ci-artifacts/TMNT-2003-android-debug.apk
             sha256sum build/ci-artifacts/TMNT-2003-android-debug.apk > build/ci-artifacts/SHA256SUMS.txt
           fi
-          if [ -f build/android-runtime/armeabi-v7a/libtmnt_runtime.so ]; then
-            cp build/android-runtime/armeabi-v7a/libtmnt_runtime.so build/ci-artifacts/libtmnt_runtime.so
+          if [ -f build/android-runtime/${{ matrix.abi }}/libtmnt_runtime.so ]; then
+            cp build/android-runtime/${{ matrix.abi }}/libtmnt_runtime.so build/ci-artifacts/libtmnt_runtime.so
           fi
           if [ -f build/ci/synthetic-pack.tmnt.zip ]; then
             cp build/ci/synthetic-pack.tmnt.zip build/ci-artifacts/synthetic-pack-NO-GAME-DATA.tmnt.zip
@@ -224,7 +235,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: TMNT-2003-android-debug-apk
+          name: TMNT-2003-android-debug-apk-${{ matrix.abi }}
           path: |
             build/ci-artifacts/TMNT-2003-android-debug.apk
             build/ci-artifacts/SHA256SUMS.txt
@@ -237,7 +248,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: android-build-reports
+          name: android-build-reports-${{ matrix.abi }}
           path: |
             android/app/build/reports/**
             build/ci-artifacts/synthetic-pack-NO-GAME-DATA.tmnt.zip
@@ -250,6 +261,7 @@ jobs:
     uses: ./.github/workflows/android-game-pack.yml
     with:
       game_zip_url: ${{ inputs.game_zip_url }}
+      target_abi: ${{ inputs.target_abi }}
       confirm_public_artifact: ${{ inputs.confirm_public_artifact == true || inputs.confirm_public_artifact == 'true' }}
 
   private-apk:
@@ -258,3 +270,4 @@ jobs:
     uses: ./.github/workflows/android-private-apk.yml
     with:
       game_zip_url: ${{ inputs.game_zip_url }}
+      target_abi: ${{ inputs.target_abi }}

@@ -161,7 +161,7 @@ public final class InstalledGameImporter {
         }
         JSONObject manifest = new JSONObject();
         manifest.put("format", GamePack.EMBEDDED_FORMAT);
-        manifest.put("abi", "armeabi-v7a");
+        manifest.put("abi", GamePack.abi());
         manifest.put("embedded_id", EmbeddedGame.id(c));
         manifest.put("files", files);
         PackImporter.commit(c, staging, manifest, GamePack.DATA_FILES);

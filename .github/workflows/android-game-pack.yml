@@ -12,6 +12,14 @@ on:
         required: false
         default: false
         type: boolean
+      target_abi:
+        description: "CPU ABI to build"
+        required: false
+        default: arm64-v8a
+        type: choice
+        options:
+          - arm64-v8a
+          - armeabi-v7a
   workflow_call:
     inputs:
       game_zip_url:
@@ -22,6 +30,10 @@ on:
         description: "I understand that the game-derived artifact will be PUBLIC in this public repository"
         required: true
         type: boolean
+      target_abi:
+        description: "CPU ABI to build (armeabi-v7a or arm64-v8a)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -31,7 +43,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ANDROID_ABI: armeabi-v7a
   ANDROID_PLATFORM: android-35
   NDK_VERSION: 27.2.12479018
   CMAKE_VERSION: 3.22.1
@@ -40,9 +51,11 @@ env:
 
 jobs:
   build-game-pack:
-    name: Build matching APK, recompile game, verify pack
+    name: Build matching APK, recompile game, verify pack (${{ inputs.target_abi }})
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      TARGET_ABI: ${{ inputs.target_abi }}
 
     steps:
       - name: Require public-artifact confirmation
@@ -117,7 +130,7 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace -PtmntAbi="$TARGET_ABI" :app:assembleDebug
 
       - name: Verify APK and exercise game-pack ABI without game data
         run: python tools/android/verify_apk.py android/app/build/outputs/apk/debug/app-debug.apk
@@ -126,13 +139,13 @@ jobs:
         run: |
           mkdir -p build/ci-artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk build/ci-artifacts/TMNT-2003-android-debug.apk
-          cp build/android-runtime/armeabi-v7a/libtmnt_runtime.so build/ci-artifacts/libtmnt_runtime.so
+          cp "build/android-runtime/$TARGET_ABI/libtmnt_runtime.so" build/ci-artifacts/libtmnt_runtime.so
           (cd build/ci-artifacts && sha256sum TMNT-2003-android-debug.apk libtmnt_runtime.so > SHA256SUMS.txt)
 
       - name: Upload installable APK and matching runtime
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: TMNT-2003-android-debug-apk
+          name: TMNT-2003-android-debug-apk-${{ inputs.target_abi }}
           path: |
             build/ci-artifacts/TMNT-2003-android-debug.apk
             build/ci-artifacts/libtmnt_runtime.so
@@ -156,7 +169,8 @@ jobs:
           mkdir -p build/android-game-artifacts
           python tools/make_android_files.py "$GAME_DIR" build/android-game-artifacts/TMNT.tmnt.zip \
             --ndk "$ANDROID_HOME/ndk/$NDK_VERSION" \
-            --runtime build/android-runtime/armeabi-v7a/libtmnt_runtime.so
+            --runtime "build/android-runtime/$TARGET_ABI/libtmnt_runtime.so" \
+            --abi "$TARGET_ABI"
 
       - name: Verify the generated game pack
         run: |
@@ -198,6 +212,7 @@ jobs:
               f"Run: {run_url}",
               f"Source ZIP SHA-256: {report['archive_sha256']}",
               f"Supported EXE SHA-1: {report['exe_sha1']}",
+              f"ABI: {os.environ['TARGET_ABI']}",
               f"TMNT.tmnt.zip SHA-256: {sha256(out / 'TMNT.tmnt.zip')}",
               f"tmnt_code.so SHA-256: {sha256(out / 'tmnt_code.so')}",
               f"image.bin SHA-256: {sha256(out / 'image.bin')}",
@@ -209,7 +224,8 @@ jobs:
           (out / "BUILD-INFO.txt").write_text("\n".join(info) + "\n", encoding="utf-8")
           (out / "README-IMPORT.txt").write_text(
               "Импортируйте TMNT.tmnt.zip через лаунчер TMNT. Отдельный tmnt_code.so не является пакетом для импорта.\n"
-              "Этот артефакт содержит файлы, полученные из игры, и доступен публично; хранится ограниченное время.\n",
+              "Этот артефакт содержит файлы, полученные из игры, и доступен публично; хранится ограниченное время.\n"
+              "Импортируйте пакет только в APK с той же ABI.\n",
               encoding="utf-8",
           )
           PY
@@ -223,7 +239,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: TMNT-2003-game-pack-PUBLIC
+          name: TMNT-2003-game-pack-PUBLIC-${{ inputs.target_abi }}
           path: |
             build/android-game-artifacts/TMNT.tmnt.zip
             build/android-game-artifacts/tmnt_code.so

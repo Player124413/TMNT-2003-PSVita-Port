@@ -22,7 +22,7 @@ public final class EmbeddedGame {
         if (cached != null) return cached;
         if (!BuildConfig.EMBEDDED_GAME) throw new IllegalStateException("This APK has no embedded game");
         JSONObject j = new JSONObject(readAsset(c, MANIFEST_ASSET, 65536));
-        if (j.getInt("format") != 1 || !"armeabi-v7a".equals(j.getString("abi")))
+        if (j.getInt("format") != 1 || !GamePack.abi().equals(j.getString("abi")))
             throw new IllegalArgumentException("Wrong embedded game format or ABI");
         String id = j.getString("id");
         if (!id.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Invalid embedded game id");

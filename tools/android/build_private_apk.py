@@ -2,7 +2,7 @@
 """Build a private Android APK with tmnt_code.so and image.bin embedded.
 
     python3 tools/android/build_private_apk.py GAME_FOLDER TMNT-private.apk \
-        --ndk /path/to/Android/Sdk/ndk/27.2.12479018
+        --abi arm64-v8a --ndk /path/to/Android/Sdk/ndk/27.2.12479018
 
 The APK is personalized from the user's supported TMNT_EN.EXE. After installing it,
 the launcher imports only the seven data files from the same installed PC game
@@ -58,9 +58,9 @@ def sha256(path):
     return h.hexdigest()
 
 
-def runtime_from_apk(apk, destination):
+def runtime_from_apk(apk, destination, abi):
     with zipfile.ZipFile(apk) as z:
-        name = "lib/armeabi-v7a/libtmnt_runtime.so"
+        name = "lib/" + abi + "/libtmnt_runtime.so"
         if name not in z.namelist():
             die("APK does not contain " + name)
         with z.open(name) as src, open(destination, "wb") as dst:
@@ -84,6 +84,7 @@ def main(argv=None):
     parser.add_argument("game", type=Path, help="installed PC game folder containing TMNT_EN.EXE")
     parser.add_argument("output", type=Path, help="destination private APK")
     parser.add_argument("--ndk", help="NDK root (r27d recommended)")
+    parser.add_argument("--abi", choices=sorted(android.ABIS), default="arm64-v8a", help="APK ABI to build (default: arm64-v8a)")
     parser.add_argument("--work-dir", type=Path, default=ROOT / "build/android-private-game",
                         help="Gradle input directory for embedded code/image (default: build/android-private-game)")
     parser.add_argument("--skip-verify", action="store_true", help="skip tools/android/verify_apk.py (not recommended)")
@@ -100,10 +101,11 @@ def main(argv=None):
         die("work-dir must be inside the repository (normally under build/)")
     exe, exe_folder = validate_game(game)
     clang = android.find_ndk(args.ndk)
+    abi = args.abi
 
-    print("Building the clean runtime first; the private module links against it.", flush=True)
-    gradle(":app:assembleDebug")
-    runtime = ROOT / "build/android-runtime/armeabi-v7a/libtmnt_runtime.so"
+    print("Building the clean %s runtime first; the private module links against it." % abi, flush=True)
+    gradle("-PtmntAbi=" + abi, ":app:assembleDebug")
+    runtime = ROOT / "build/android-runtime" / abi / "libtmnt_runtime.so"
     if not runtime.is_file():
         die("runtime was not produced: " + str(runtime))
 
@@ -118,29 +120,29 @@ def main(argv=None):
     with tempfile.TemporaryDirectory(prefix="tmnt-private-module-", dir=work_dir) as tmp:
         temp = Path(tmp)
         module = temp / "libtmnt_code.so"
-        android.build_module(clang, runtime, module, temp, soname="libtmnt_code.so")
-        manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, exe_folder)
+        android.build_module(clang, runtime, module, temp, soname="libtmnt_code.so", abi=abi)
+        manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, exe_folder, abi=abi)
         embedded.write_directory(work_dir, module, image, manifest)
 
     print("Packaging the private APK with embedded code and image.", flush=True)
-    gradle("-PtmntEmbeddedDir=" + str(work_dir), ":app:assembleDebug")
+    gradle("-PtmntAbi=" + abi, "-PtmntEmbeddedDir=" + str(work_dir), ":app:assembleDebug")
     final_apk = apk_path(True)
     if not final_apk.is_file():
         die("private APK was not produced: " + str(final_apk))
 
     # A changed build directory can rebuild the runtime. Relink once against the exact packaged runtime.
-    packaged_runtime = runtime_from_apk(final_apk, work_dir / "libtmnt_runtime.packaged.so")
+    packaged_runtime = runtime_from_apk(final_apk, work_dir / "libtmnt_runtime.packaged.so", abi)
     if sha256(packaged_runtime) != manifest["runtime_sha256"]:
         print("Runtime changed during private packaging; relinking the embedded module against the packaged runtime.", flush=True)
         with tempfile.TemporaryDirectory(prefix="tmnt-private-relink-", dir=work_dir) as tmp:
             temp = Path(tmp)
             module = temp / "libtmnt_code.so"
-            android.build_module(clang, packaged_runtime, module, temp, soname="libtmnt_code.so")
-            manifest = embedded.make_manifest(module, image, packaged_runtime, vita.EXE_SHA1, exe_folder)
+            android.build_module(clang, packaged_runtime, module, temp, soname="libtmnt_code.so", abi=abi)
+            manifest = embedded.make_manifest(module, image, packaged_runtime, vita.EXE_SHA1, exe_folder, abi=abi)
             embedded.write_directory(work_dir, module, image, manifest)
-        gradle("-PtmntEmbeddedDir=" + str(work_dir), ":app:assembleDebug")
+        gradle("-PtmntAbi=" + abi, "-PtmntEmbeddedDir=" + str(work_dir), ":app:assembleDebug")
         final_apk = apk_path(True)
-        packaged_runtime = runtime_from_apk(final_apk, work_dir / "libtmnt_runtime.packaged.so")
+        packaged_runtime = runtime_from_apk(final_apk, work_dir / "libtmnt_runtime.packaged.so", abi)
         if sha256(packaged_runtime) != manifest["runtime_sha256"]:
             die("packaged runtime does not match the embedded module after relink")
 
@@ -157,6 +159,7 @@ def main(argv=None):
     checksum = sha256(output)
     output.with_suffix(output.suffix + ".sha256").write_text(checksum + "  " + output.name + "\n", encoding="utf-8")
     print("Wrote private APK:", output)
+    print("ABI:", abi)
     print("SHA-256:", checksum)
     print("Install it, then import a ZIP or folder of the same installed PC game. Keep the APK private.")
     return 0

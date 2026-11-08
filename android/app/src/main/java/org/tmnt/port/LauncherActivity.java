@@ -71,7 +71,7 @@ public final class LauncherActivity extends Activity {
             }).show());
     }
     @Override protected void onResume() { super.onResume(); refresh(); }
-    private boolean supported() { for(String a:Build.SUPPORTED_32_BIT_ABIS) if("armeabi-v7a".equals(a)) return true; return false; }
+    private boolean supported() { for(String a:Build.SUPPORTED_ABIS) if(GamePack.abi().equals(a)) return true; return false; }
     private void refresh() {
         boolean ready=GamePack.installed(this), ok=supported();
         status.setText(ready?R.string.ready:R.string.not_ready);

@@ -7,10 +7,22 @@ on:
         description: "Direct HTTPS URL (port 443) to a ZIP of your installed PC game; do not include passwords or secret tokens"
         required: true
         type: string
+      target_abi:
+        description: "CPU ABI to build"
+        required: false
+        default: arm64-v8a
+        type: choice
+        options:
+          - arm64-v8a
+          - armeabi-v7a
   workflow_call:
     inputs:
       game_zip_url:
         description: "Direct HTTPS URL (port 443) to a ZIP of your installed PC game; do not include passwords or secret tokens"
+        required: true
+        type: string
+      target_abi:
+        description: "CPU ABI to build (armeabi-v7a or arm64-v8a)"
         required: true
         type: string
 
@@ -22,7 +34,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ANDROID_ABI: armeabi-v7a
   ANDROID_PLATFORM: android-35
   NDK_VERSION: 27.2.12479018
   CMAKE_VERSION: 3.22.1
@@ -31,9 +42,11 @@ env:
 
 jobs:
   build-private-apk:
-    name: Build private APK with embedded code/image
+    name: Build private APK with embedded code/image (${{ inputs.target_abi }})
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      TARGET_ABI: ${{ inputs.target_abi }}
 
     steps:
       - name: Require a private repository
@@ -119,7 +132,8 @@ jobs:
           GAME_DIR="$(python -c 'import json; from pathlib import Path; r=json.loads(Path("build/android-game-source/report.json").read_text()); print(Path("build/android-game-source/game") / r["game_dir"])')"
           mkdir -p build/android-private-artifacts
           python tools/android/build_private_apk.py "$GAME_DIR" build/android-private-artifacts/TMNT-2003-private.apk \
-            --ndk "$ANDROID_HOME/ndk/$NDK_VERSION"
+            --ndk "$ANDROID_HOME/ndk/$NDK_VERSION" \
+            --abi "$TARGET_ABI"
 
       - name: Verify the private APK
         run: |
@@ -154,6 +168,7 @@ jobs:
               f"Run: {run_url}",
               f"Source ZIP SHA-256: {report['archive_sha256']}",
               f"Supported EXE SHA-1: {report['exe_sha1']}",
+              f"ABI: {os.environ['TARGET_ABI']}",
               f"APK SHA-256: {checksum}",
               "",
               "The APK embeds libtmnt_code.so and image.bin. Install it, then import a ZIP or folder of the same installed PC game.",
@@ -176,7 +191,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: TMNT-2003-private-apk-PRIVATE
+          name: TMNT-2003-private-apk-${{ inputs.target_abi }}-PRIVATE
           path: |
             build/android-private-artifacts/TMNT-2003-private.apk
             build/android-private-artifacts/SHA256SUMS.txt

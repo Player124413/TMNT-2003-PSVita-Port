@@ -7,9 +7,10 @@
 
 ## Что нужно
 
-- Телефон/планшет с **32-битным ARM `armeabi-v7a`** и Android 8.0+ (API 26), OpenGL ES 2.0.
-  Современные устройства только с 64-битными приложениями не поддерживаются: гостевые указатели
-  в рекомпиляции 32-битные. Лаунчер показывает понятное сообщение на таком устройстве.
+- Телефон/планшет с ARM и Android 8.0+ (API 26), OpenGL ES 2.0. Поддерживаются **`arm64-v8a`**
+  (современные 64-битные устройства) и **`armeabi-v7a`** (старые 32-битные). APK собирается под одну
+  ABI; выберите артефакт/сборку под процессор телефона. Гостевые адреса остаются 32-битными смещениями,
+  но Android-рантайм на AArch64 использует нативные host-указатели. Лаунчер проверяет ABI APK.
 - Собственная поддерживаемая PC-версия: `TMNT_EN.EXE` SHA-1
   `4e56dd020e9b3c9fdf755f3d655fd5f2a84e4777`, 2 150 400 байт, и данные рядом с ним.
 - Для сборки APK: JDK 17, Android SDK 35, NDK **27.2.12479018**, CMake 3.22.1, Python 3.8+.
@@ -24,11 +25,12 @@
 
    ```sh
    python3 tools/make_android_files.py /путь/к/игре ~/TMNT.tmnt.zip \
-       --ndk /путь/к/Android/Sdk/ndk/27.2.12479018
+       --abi arm64-v8a --ndk /путь/к/Android/Sdk/ndk/27.2.12479018
    ```
 
    Если APK уже собран в этом дереве, генератор найдёт рантайм в
-   `build/android-runtime/armeabi-v7a/libtmnt_runtime.so`. Иначе передайте `--runtime` путь к
+   `build/android-runtime/arm64-v8a/libtmnt_runtime.so` (или `armeabi-v7a`, если собран 32-битный APK).
+   Иначе передайте `--runtime` путь к
    **той же версии** `libtmnt_runtime.so`, что установлена в APK.
 3. Скопируйте `TMNT.tmnt.zip` на телефон и в лаунчер нажмите **Импортировать файлы игры**.
    Импорт идёт через системный выбор файла, проверяет SHA-256 каждого файла и не требует
@@ -44,16 +46,18 @@
 
 Workflow `.github/workflows/android.yml` собирает APK на `ubuntu-24.04` с JDK 17, Android SDK 35,
 NDK 27.2.12479018 и CMake 3.22.1. Он запускается на push в `main`/`arena/**`, на pull request и вручную
-(`workflow_dispatch`).
+(`workflow_dispatch`). Push/PR собирают и проверяют **обе ABI** отдельными job; ручной запуск с URL
+использует выбранный `target_abi` (по умолчанию `arm64-v8a`).
 
 Что проверяется:
 - host-тесты генератора пакета и атомарного touch-ввода;
 - сборка `:app:assembleDebug` и `:app:lintDebug`;
-- подпись APK, выравнивание, manifest, ABI и отсутствие игровых данных внутри APK;
+- подпись APK, выравнивание (для `arm64-v8a` также 16 KiB pages), manifest, ABI и отсутствие игровых данных внутри APK;
 - линковка синтетического `tmnt_code.so` с рантаймом из APK и создание тестового `.tmnt.zip`.
 
-Артефакт `TMNT-2003-android-debug-apk` содержит устанавливаемый APK, `libtmnt_runtime.so` и SHA-256.
-Артефакт `android-build-reports` содержит lint-отчёты и синтетический пакет. Синтетический пакет
+Артефакты `TMNT-2003-android-debug-apk-arm64-v8a` и `TMNT-2003-android-debug-apk-armeabi-v7a`
+содержат устанавливаемый APK, совместимый `libtmnt_runtime.so` и SHA-256. Соответствующие
+`android-build-reports-<abi>` содержат lint-отчёты и синтетический пакет. Синтетический пакет
 **не является игрой**: он нужен только для проверки формата и ABI. Обычный APK-workflow не скачивает
 игру и не публикует игровые файлы. Реальный пакет можно создать локально из собственной копии игры
 или отдельным ручным workflow ниже; во втором случае игровой артефакт будет **публичным**. Для
@@ -81,8 +85,8 @@ reusable workflow `.github/workflows/android-game-pack.yml` («Android game pack
    а включите `private_apk` в приватном репозитории либо используйте локальный
    `tools/android/build_private_apk.py`.
 3. После успешного запуска скачайте артефакты:
-   - `TMNT-2003-android-debug-apk` — APK, совместимый `libtmnt_runtime.so`, SHA-256;
-   - `TMNT-2003-game-pack-PUBLIC` — `TMNT.tmnt.zip`, отдельные `tmnt_code.so`/`image.bin`,
+   - `TMNT-2003-android-debug-apk-<abi>` — APK, совместимый `libtmnt_runtime.so`, SHA-256;
+   - `TMNT-2003-game-pack-PUBLIC-<abi>` — `TMNT.tmnt.zip`, отдельные `tmnt_code.so`/`image.bin`,
      `SHA256SUMS.txt`, `BUILD-INFO.txt`, `README-IMPORT.txt`.
 4. Установите APK из этого запуска и импортируйте в лаунчере **`TMNT.tmnt.zip`**. Отдельный
    `tmnt_code.so` не является пакетом для импорта: лаунчеру нужны все 9 файлов и `pack.json`.
@@ -98,7 +102,7 @@ reusable workflow `.github/workflows/android-game-pack.yml` («Android game pack
   шифрованные записи; проверяются CRC и размеры;
 - поддерживается только `TMNT_EN.EXE` SHA-1 `4e56dd020e9b3c9fdf755f3d655fd5f2a84e4777`;
 - перед загрузкой артефакта проверяются `pack.json`, точный список файлов, размеры, SHA-256,
-  ELF32 ARM, зависимость от `libtmnt_runtime.so` и экспорт `tmnt_code`.
+  ELF ARM/AArch64 для заявленной ABI, зависимость от `libtmnt_runtime.so` и экспорт `tmnt_code`.
 
 Игровой артефакт хранится **1 день** (`retention-days: 1`). Исходный ZIP, распакованная игра и
 промежуточный рекомпилированный C не коммитятся и удаляются на runner перед загрузкой артефакта.
@@ -106,7 +110,7 @@ reusable workflow `.github/workflows/android-game-pack.yml` («Android game pack
 ## Приватный APK со встроенными кодом и image.bin
 
 Этот вариант делает именно то, что обычно хочется от «готового» APK: `tmnt_code.so` упакован как
-`lib/armeabi-v7a/libtmnt_code.so`, `image.bin` лежит в `assets/tmnt/image.bin` и один раз извлекается в
+`lib/<abi>/libtmnt_code.so`, `image.bin` лежит в `assets/tmnt/image.bin` и один раз извлекается в
 приватный каталог приложения. После установки не нужно импортировать `.tmnt.zip`, `tmnt_code.so` или
 `image.bin`: лаунчер просит только **данные той же установленной PC-игры** — ZIP установленной игры или
 папку игры, скопированную на телефон. Семь файлов (`TMNT_EN.DAT`/`TMNT.DAT`, `TMNT_V00.DAT`,
@@ -117,7 +121,7 @@ reusable workflow `.github/workflows/android-game-pack.yml` («Android game pack
 
 ```sh
 python3 tools/android/build_private_apk.py /путь/к/установленной/игре TMNT-2003-private.apk \
-    --ndk /путь/к/Android/Sdk/ndk/27.2.12479018
+    --abi arm64-v8a --ndk /путь/к/Android/Sdk/ndk/27.2.12479018
 ```
 
 Нужны JDK 17, Android SDK 35, NDK 27.2.12479018, CMake 3.22.1 и Python-пакеты из
@@ -126,9 +130,9 @@ python3 tools/android/build_private_apk.py /путь/к/установленно
 `.sha256`. Промежуточные файлы остаются только в ignored `build/`.
 
 Через GitHub Actions: **Android APK → Run workflow**, заполнить `game_zip_url` и включить
-`private_apk`. Workflow `.github/workflows/android-private-apk.yml` сначала проверяет через GitHub API,
+`private_apk` и выбрать `target_abi`. Workflow `.github/workflows/android-private-apk.yml` сначала проверяет через GitHub API,
 что репозиторий **приватный**; в публичном репозитории он падает до скачивания игры. В приватном
-репозитории артефакт `TMNT-2003-private-apk-PRIVATE` доступен только пользователям с доступом к
+репозитории артефакт `TMNT-2003-private-apk-<abi>-PRIVATE` доступен только пользователям с доступом к
 репозиторию и хранится 7 дней. Не делайте репозиторий публичным, пока такой артефакт существует.
 
 Установка и импорт:
@@ -149,12 +153,13 @@ python3 tools/android/build_private_apk.py /путь/к/установленно
 ```sh
 python3 tools/android/fetch_deps.py
 cd android
-./gradlew :app:assembleDebug
+./gradlew -PtmntAbi=arm64-v8a :app:assembleDebug
 ```
 
 APK появится в `android/app/build/outputs/apk/debug/`. Gradle сам скачает AGP/SDK-зависимости;
 `local.properties` должен указывать на Android SDK (`sdk.dir=...`) или задайте `ANDROID_HOME`.
-Сборка использует только `armeabi-v7a`. Не добавляйте `arm64-v8a` без портирования гостевой модели указателей.
+По умолчанию собирается `armeabi-v7a`; для 64-битных телефонов передайте `-PtmntAbi=arm64-v8a`.
+Один APK содержит одну ABI, чтобы игровой пакет и embedded-манифест всегда соответствовали процессу.
 
 После сборки APK создайте игровой пакет командой выше. Порядок важен: `tmnt_code.so` линкуется
 с рантаймом из APK и получает `DT_NEEDED libtmnt_runtime.so`.
