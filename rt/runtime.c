@@ -878,7 +878,10 @@ int game_main(int argc, char **argv)
     heap_init(GUEST_HEAP_LO, GUEST_SPACE);
 #ifdef TMNT_CODE_SO
 #ifdef __ANDROID__
-    code_so_load(android_game_path("tmnt_code.so"));
+    /* Private APKs ship libtmnt_code.so in lib/armeabi-v7a; clean APKs import tmnt_code.so. */
+    const char *code_path = android_game_path("tmnt_code.so");
+    if (access(code_path, F_OK) != 0) code_path = "libtmnt_code.so";
+    code_so_load(code_path);
 #else
     code_so_load("tmnt_code.so");
 #endif

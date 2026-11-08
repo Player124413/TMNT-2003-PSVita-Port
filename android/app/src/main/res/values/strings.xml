@@ -2,11 +2,18 @@
 <resources>
     <string name="app_name">TMNT 2003</string>
     <string name="subtitle">ANDROID PORT · UNOFFICIAL</string>
+    <string name="subtitle_private">ANDROID PRIVATE BUILD · UNOFFICIAL</string>
     <string name="hero">TURTLE POWER.\nIN YOUR POCKET.</string>
     <string name="hero_body">Your game. Your controls. No downloaded game data.</string>
     <string name="play">Play</string>
     <string name="import_data">Import game pack</string>
     <string name="replace_data">Replace game pack</string>
+    <string name="import_pc_data">Import installed PC game</string>
+    <string name="replace_pc_data">Replace PC game data</string>
+    <string name="import_zip">ZIP of the installed game</string>
+    <string name="import_folder">Game folder on this device</string>
+    <string name="embedded_ready_body">Ready to launch. Translated code and image.bin are built into this private APK; only PC data was imported.</string>
+    <string name="embedded_not_ready_body">Import a ZIP or folder of the same installed PC game used to build this APK. No code pack or computer-side conversion is needed.</string>
     <string name="edit_controls">Edit touch controls</string>
     <string name="settings">Performance &amp; picture</string>
     <string name="ready">Game pack installed</string>

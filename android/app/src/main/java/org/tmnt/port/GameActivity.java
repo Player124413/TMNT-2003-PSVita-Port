@@ -28,7 +28,9 @@ public class GameActivity extends SDLActivity {
             handler.postDelayed(this,500);
         }
     }};
-    @Override protected String[] getLibraries(){return new String[]{"SDL2","tmnt_runtime"};}
+    @Override protected String[] getLibraries(){
+        return BuildConfig.EMBEDDED_GAME ? new String[]{"SDL2","tmnt_runtime","tmnt_code"} : new String[]{"SDL2","tmnt_runtime"};
+    }
     @Override protected String getMainFunction(){return "SDL_main";}
     @Override public void onCreate(Bundle state){
         super.onCreate(state); Ui.immersive(this); Ui.back(this,this::showPause);

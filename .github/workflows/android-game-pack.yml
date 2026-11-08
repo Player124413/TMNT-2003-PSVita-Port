@@ -97,12 +97,17 @@ jobs:
           python -m py_compile \
             tools/android/fetch_deps.py \
             tools/android/fetch_game_zip.py \
+            tools/android/embedded_game.py \
+            tools/android/build_private_apk.py \
+            tools/android/verify_apk.py \
             tools/android/verify_game_pack.py \
             tools/android/test_android.py \
             tools/android/test_game_zip.py \
+            tools/android/test_embedded.py \
             tools/make_android_files.py
           python tools/android/test_android.py
           python tools/android/test_game_zip.py
+          python tools/android/test_embedded.py
           mkdir -p build/ci
           cc -std=c11 -Wall -Wextra -Werror -I. tools/android/test_touch.c rt/android/touch.c -o build/ci/test_touch
           ./build/ci/test_touch

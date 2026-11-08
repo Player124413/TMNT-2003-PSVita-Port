@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/android.yml"
       - ".github/workflows/android-game-pack.yml"
+      - ".github/workflows/android-private-apk.yml"
       - "android/**"
       - "rt/**"
       - "tools/android/**"
@@ -21,6 +22,7 @@ on:
     paths:
       - ".github/workflows/android.yml"
       - ".github/workflows/android-game-pack.yml"
+      - ".github/workflows/android-private-apk.yml"
       - "android/**"
       - "rt/**"
       - "tools/android/**"
@@ -35,12 +37,17 @@ on:
   workflow_dispatch:
     inputs:
       game_zip_url:
-        description: "Optional: direct HTTPS ZIP URL of your installed PC game. If set, builds a PUBLIC game pack instead of the plain APK."
+        description: "Optional: direct HTTPS ZIP URL of your installed PC game. With private_apk builds a private embedded APK; otherwise builds a PUBLIC game pack."
         required: false
         default: ""
         type: string
       confirm_public_artifact:
-        description: "Required with game_zip_url: I understand the game-derived artifact will be PUBLIC"
+        description: "Required with game_zip_url for the public game pack: I understand the game-derived artifact will be PUBLIC"
+        required: false
+        default: false
+        type: boolean
+      private_apk:
+        description: "With game_zip_url: build a PRIVATE APK with embedded code/image (private repositories only)"
         required: false
         default: false
         type: boolean
@@ -110,12 +117,17 @@ jobs:
           python -m py_compile \
             tools/android/fetch_deps.py \
             tools/android/fetch_game_zip.py \
+            tools/android/embedded_game.py \
+            tools/android/build_private_apk.py \
+            tools/android/verify_apk.py \
             tools/android/verify_game_pack.py \
             tools/android/test_android.py \
             tools/android/test_game_zip.py \
+            tools/android/test_embedded.py \
             tools/make_android_files.py
           python tools/android/test_android.py
           python tools/android/test_game_zip.py
+          python tools/android/test_embedded.py
           mkdir -p build/ci
           cc -std=c11 -Wall -Wextra -Werror -I. tools/android/test_touch.c rt/android/touch.c -o build/ci/test_touch
           ./build/ci/test_touch
@@ -133,6 +145,65 @@ jobs:
       - name: Android lint
         working-directory: android
         run: ./gradlew --no-daemon --stacktrace :app:lintDebug
+
+      - name: Exercise private embedded packaging with a synthetic no-game fixture
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          sys.path.insert(0, "tools/android")
+          import make_android_files as android
+          import make_vita_files as vita
+          import embedded_game as embedded
+          import verify_apk as verify
+
+          work = Path("build/ci/embedded-fixture")
+          work.mkdir(parents=True, exist_ok=True)
+          runtime = Path("build/android-runtime/armeabi-v7a/libtmnt_runtime.so")
+          clang = android.find_ndk(None)
+          module = verify.synthetic_module(clang, runtime, work, soname="libtmnt_code.so")
+          image = work / "image.bin"
+          image.write_bytes(b"synthetic-no-game-image" * 64)
+          game = work / "game"
+          game.mkdir(exist_ok=True)
+          for source in vita.DATA_FILES:
+              (game / source).write_bytes(("synthetic-no-game-data:" + source).encode() * 32)
+          manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, game)
+          embedded.write_directory(work / "input", module, image, manifest)
+          PY
+          cd android
+          ./gradlew --no-daemon --stacktrace -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
+          cd ..
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          import sys
+          import zipfile
+          sys.path.insert(0, "tools")
+          sys.path.insert(0, "tools/android")
+          import make_android_files as android
+          import make_vita_files as vita
+          import embedded_game as embedded
+          import verify_apk as verify
+
+          work = Path("build/ci/embedded-fixture")
+          apk = Path("build/android-private-app/outputs/apk/debug/app-debug.apk")
+          packaged = work / "libtmnt_runtime.packaged.so"
+          with zipfile.ZipFile(apk) as z, packaged.open("wb") as out:
+              with z.open("lib/armeabi-v7a/libtmnt_runtime.so") as src:
+                  shutil.copyfileobj(src, out, 1 << 20)
+          clang = android.find_ndk(None)
+          relink = work / "relink"
+          relink.mkdir(exist_ok=True)
+          module = verify.synthetic_module(clang, packaged, relink, soname="libtmnt_code.so")
+          manifest = embedded.make_manifest(module, work / "image.bin", packaged, vita.EXE_SHA1, work / "game")
+          embedded.write_directory(work / "input", module, work / "image.bin", manifest)
+          PY
+          cd android
+          ./gradlew --no-daemon --stacktrace -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
+          cd ..
+          python tools/android/verify_apk.py build/android-private-app/outputs/apk/debug/app-debug.apk
 
       - name: Stage artifacts
         if: always()
@@ -175,8 +246,15 @@ jobs:
 
   game-pack:
     name: Build public game pack from URL
-    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != '' && !inputs.private_apk
     uses: ./.github/workflows/android-game-pack.yml
     with:
       game_zip_url: ${{ inputs.game_zip_url }}
       confirm_public_artifact: ${{ inputs.confirm_public_artifact == true || inputs.confirm_public_artifact == 'true' }}
+
+  private-apk:
+    name: Build private embedded APK from URL
+    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != '' && inputs.private_apk
+    uses: ./.github/workflows/android-private-apk.yml
+    with:
+      game_zip_url: ${{ inputs.game_zip_url }}

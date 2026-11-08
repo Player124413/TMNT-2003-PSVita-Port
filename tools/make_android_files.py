@@ -70,7 +70,7 @@ def validate_module(path):
         die("the compiler did not produce an ELF32 ARM shared module")
 
 
-def build_module(clang, runtime, destination, work):
+def build_module(clang, runtime, destination, work, soname=None):
     sources = sorted((ROOT / "recomp/out/c").glob("*.c")) + [ROOT / "rt/code_so_entry.c"]
     if len(sources) < 3:
         die("translated C is missing; run the full generator, not --code-only")
@@ -94,7 +94,10 @@ def build_module(clang, runtime, destination, work):
                 die(result)
             objs.append(result)
     command = [str(clang), "--target=armv7a-linux-androideabi26", "-shared", "-Wl,-z,max-page-size=16384",
-               "-Wl,-z,now", "-Wl,--no-undefined", "-o", str(destination), *map(str, objs), str(runtime), "-lm"]
+               "-Wl,-z,now", "-Wl,--no-undefined"]
+    if soname:
+        command += ["-Wl,-soname," + soname]
+    command += ["-o", str(destination), *map(str, objs), str(runtime), "-lm"]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if result.returncode:
         die("linking tmnt_code.so failed:\n" + result.stdout)

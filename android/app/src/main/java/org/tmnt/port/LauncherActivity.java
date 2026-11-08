@@ -24,7 +24,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class LauncherActivity extends Activity {
-    private static final int PICK_PACK = 41;
+    private static final int PICK_PACK = 41, PICK_TREE = 42;
     private PortSettings settings;
     private TextView status, statusBody;
     private Button play, importButton;
@@ -37,7 +37,8 @@ public final class LauncherActivity extends Activity {
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(Ui.BG);
         LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
         int pad=Ui.dp(this,24); page.setPadding(pad,pad,pad,pad); scroll.addView(page); setContentView(scroll); Ui.safePadding(scroll);
-        page.addView(Ui.text(this,getString(R.string.subtitle),11,Ui.GREEN)); Ui.gap(page,this,22);
+        TextView subtitle=Ui.text(this,getString(BuildConfig.EMBEDDED_GAME?R.string.subtitle_private:R.string.subtitle),11,Ui.GREEN);
+        page.addView(subtitle); Ui.gap(page,this,22);
         page.addView(Ui.text(this,getString(R.string.hero),38,Ui.TEXT)); Ui.gap(page,this,12);
         page.addView(Ui.text(this,getString(R.string.hero_body),16,Ui.MUTED)); Ui.gap(page,this,28);
         LinearLayout card = new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setPadding(pad,pad,pad,pad);
@@ -74,29 +75,48 @@ public final class LauncherActivity extends Activity {
     private void refresh() {
         boolean ready=GamePack.installed(this), ok=supported();
         status.setText(ready?R.string.ready:R.string.not_ready);
-        statusBody.setText(ready?R.string.ready_body:R.string.not_ready_body);
+        if (BuildConfig.EMBEDDED_GAME) statusBody.setText(ready?R.string.embedded_ready_body:R.string.embedded_not_ready_body);
+        else statusBody.setText(ready?R.string.ready_body:R.string.not_ready_body);
         play.setEnabled(ready&&ok&&!importing.get()); play.setAlpha(play.isEnabled()?1:.4f);
-        importButton.setText(ready?R.string.replace_data:R.string.import_data); importButton.setEnabled(ok&&!importing.get());
+        importButton.setText(ready ? (BuildConfig.EMBEDDED_GAME?R.string.replace_pc_data:R.string.replace_data)
+                                   : (BuildConfig.EMBEDDED_GAME?R.string.import_pc_data:R.string.import_data));
+        importButton.setEnabled(ok&&!importing.get());
     }
     private void launch() {
-        try { settings.writeNative(this); startActivity(new Intent(this,GameActivity.class)); }
-        catch(Exception e){ error(e); }
+        try {
+            if (BuildConfig.EMBEDDED_GAME) EmbeddedGame.ensureImage(this);
+            settings.writeNative(this); startActivity(new Intent(this,GameActivity.class));
+        } catch(Exception e){ error(e); }
     }
     private void pick() {
+        if (BuildConfig.EMBEDDED_GAME) {
+            new AlertDialog.Builder(this).setTitle(R.string.import_data)
+                .setItems(new String[]{getString(R.string.import_zip), getString(R.string.import_folder)}, (d,w)->{ if(w==0) pickZip(); else pickFolder(); })
+                .setNegativeButton(R.string.cancel,null).show();
+        } else pickZip();
+    }
+    private void pickZip() {
         Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE);
         i.setType("*/*"); i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/zip","application/x-zip-compressed","application/octet-stream"});
         startActivityForResult(i,PICK_PACK);
     }
+    private void pickFolder() {
+        Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(i,PICK_TREE);
+    }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
-        if(request!=PICK_PACK || result!=RESULT_OK || data==null || data.getData()==null) return;
+        if((request!=PICK_PACK && request!=PICK_TREE) || result!=RESULT_OK || data==null || data.getData()==null) return;
         if(!importing.compareAndSet(false,true)) return;
-        cancelled.set(false); Uri uri=data.getData(); refresh();
+        cancelled.set(false); Uri uri=data.getData(); boolean tree=request==PICK_TREE; refresh();
         progress=new ProgressDialog(this); progress.setMessage(getString(R.string.importing)); progress.setCancelable(false);
         progress.setButton(ProgressDialog.BUTTON_NEGATIVE,getString(R.string.cancel),(d,w)->cancelled.set(true)); progress.show();
         executor.execute(()->{
             try {
-                PackImporter.importZip(getApplicationContext(),uri,cancelled,s->runOnUiThread(()->{if(progress!=null)progress.setMessage(s);}));
+                if (tree) InstalledGameImporter.importTree(getApplicationContext(),uri,cancelled,s->runOnUiThread(()->{if(progress!=null)progress.setMessage(s);}));
+                else if (BuildConfig.EMBEDDED_GAME) InstalledGameImporter.importZip(getApplicationContext(),uri,cancelled,s->runOnUiThread(()->{if(progress!=null)progress.setMessage(s);}));
+                else PackImporter.importZip(getApplicationContext(),uri,cancelled,s->runOnUiThread(()->{if(progress!=null)progress.setMessage(s);}));
                 runOnUiThread(()->{finishImport();Toast.makeText(this,R.string.import_ok,Toast.LENGTH_LONG).show();});
             } catch(Exception e) { runOnUiThread(()->{finishImport();if(!cancelled.get())error(e);}); }
         });
