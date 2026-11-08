@@ -19,3 +19,13 @@ __pycache__/
 # LiveArea images made from the game's copyrighted art (tools/vita/livearea_from_art.py).
 /vita/sce_sys/icon0.png
 /vita/sce_sys/livearea/contents/*.png
+# Android local SDK, Gradle and fetched third-party sources.
+/android/local.properties
+/android/.gradle/
+/android/app/build/
+/android/app/.cxx/
+/android/.idea/
+*.apk
+*.aab
+*.jks
+*.keystore

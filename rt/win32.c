@@ -61,7 +61,7 @@ static rt_thread_ctx *ctx_of_cpu(CPU *c)
         if (&all_ctx[i]->cpu == c) return all_ctx[i];
     return NULL;
 }
-static pthread_mutex_t big = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
+static pthread_mutex_t big = RT_RECURSIVE_MUTEX_INITIALIZER;
 static uint32_t next_tid = 1001;
 
 uint32_t rt_current_teb(CPU *c) { rt_thread_ctx *x = ctx_of_cpu(c); return x ? x->teb : GUEST_TEB; }

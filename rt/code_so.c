@@ -1,5 +1,5 @@
 /* Vita: loads tmnt_code.so (the translated game code the user made from their TMNT_EN.EXE) into executable memory and links it to the runtime. */
-#ifdef TMNT_CODE_SO
+#if defined(TMNT_CODE_SO) && !defined(__ANDROID__)
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>

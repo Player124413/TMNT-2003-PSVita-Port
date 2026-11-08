@@ -50,6 +50,11 @@
 #include <math.h>
 #include <setjmp.h>
 #include <stdint.h>
+
+/* Guest pointers are stored as uint32_t throughout the translated code and host runtime. */
+#if defined(__vita__) || defined(__ANDROID__)
+_Static_assert(sizeof(void *) == 4, "TMNT requires a 32-bit host (armeabi-v7a on Android)");
+#endif
 #include <string.h>
 #if defined(_MSC_VER)
 #include <intrin.h>

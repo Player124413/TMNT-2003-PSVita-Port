@@ -99,6 +99,13 @@ This writes 18 `.avc` files (about 450 MB) to `build/movies/`, each checked fram
 them to `ux0:data/TMNT2003/movies/`. Only the picture is converted: the sound still comes from the game's own files.
 Without the converted movies the game falls back to a software decoder, which is choppy on the Vita.
 
+## Android
+
+An unofficial Android port (launcher, editable multitouch controls, GLES2/gl4es rendering, performance profiles)
+lives in `android/`. It requires a 32-bit ARM (`armeabi-v7a`) Android 8+ device and the user's own supported PC game.
+The APK contains no game code or data. See [docs/ANDROID.md](docs/ANDROID.md) for build/import instructions,
+the ETC2/DXT explanation and the current device-testing status.
+
 ## Building from source
 
 1. Extract the game with `innoextract --collisions=rename` into `game/`. The English executable is

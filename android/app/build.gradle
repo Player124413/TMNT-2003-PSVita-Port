@@ -1,0 +1,55 @@
+plugins { id 'com.android.application' }
+
+def repoRoot = rootProject.projectDir.parentFile
+def dependencyScript = new File(repoRoot, 'tools/android/fetch_deps.py')
+def sdlJava = new File(repoRoot, 'build/android-deps/SDL2/android-project/app/src/main/java')
+tasks.register('fetchNativeSources', Exec) {
+    commandLine 'python3', dependencyScript.absolutePath
+}
+preBuild.dependsOn 'fetchNativeSources'
+
+android {
+    namespace 'org.tmnt.port'
+    compileSdk 35
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        applicationId 'org.tmnt.port'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0-android'
+        // The translated code stores host pointers in uint32_t. Never add arm64 without porting the guest model.
+        ndk { abiFilters 'armeabi-v7a' }
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=none', '-DANDROID_ARM_NEON=ON', '-DTMNT_ANDROID_ROOT=' + repoRoot.absolutePath
+                cFlags '-std=gnu11', '-fno-strict-aliasing'
+            }
+        }
+    }
+    sourceSets.main {
+        java.srcDir sdlJava
+        assets.srcDir new File(repoRoot, 'build/android-deps/generated-assets')
+    }
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes {
+        debug { debuggable true }
+        release {
+            minifyEnabled false
+            // Set these in ~/.gradle/gradle.properties, never in the repository.
+            if (project.hasProperty('TMNT_RELEASE_STORE')) {
+                signingConfig signingConfigs.create('portRelease') {
+                    storeFile file(project.property('TMNT_RELEASE_STORE'))
+                    storePassword project.property('TMNT_RELEASE_PASSWORD')
+                    keyAlias project.property('TMNT_RELEASE_ALIAS')
+                    keyPassword project.property('TMNT_RELEASE_KEY_PASSWORD')
+                }
+            }
+        }
+    }
+    packaging { jniLibs { useLegacyPackaging false } }
+    lint { abortOnError true; disable 'MissingTranslation' }
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TMNT 2003</string><string name="subtitle">НЕОФИЦИАЛЬНЫЙ ANDROID-ПОРТ</string>
+    <string name="hero">ЧЕРЕПАШЬЯ СИЛА.\nТЕПЕРЬ В КАРМАНЕ.</string>
+    <string name="hero_body">Твоя игра. Твоё управление. Без чужих файлов в APK.</string>
+    <string name="play">Играть</string><string name="import_data">Импортировать файлы игры</string><string name="replace_data">Заменить файлы игры</string>
+    <string name="edit_controls">Настроить сенсорные кнопки</string><string name="settings">Производительность и изображение</string>
+    <string name="ready">Файлы игры установлены</string><string name="not_ready">Нужны файлы игры</string>
+    <string name="ready_body">Можно запускать. APK содержит только код порта.</string>
+    <string name="not_ready_body">Создай пакет .tmnt.zip на компьютере из своей PC-версии игры и импортируй здесь. Инструкция: docs/ANDROID.md.</string>
+    <string name="unsupported_abi">Порту нужен 32-битный ARM-процессор. Это устройство поддерживает только 64-битные приложения.</string>
+    <string name="legal">Неофициальный порт · не связан с Konami и Nickelodeon.\nНужна собственная поддерживаемая копия PC-игры. Код и данные игры остаются на твоём устройстве.</string>
+    <string name="profile">Профиль производительности</string><string name="balanced">Баланс · рекомендуется</string>
+    <string name="battery">Прохладный · до 30 FPS</string><string name="performance">Максимум · без ограничения</string>
+    <string name="picture">Изображение</string><string name="aspect">Сохранять пропорции 4:3</string><string name="render_scale">Внутреннее разрешение</string>
+    <string name="sound">Звук</string><string name="perf">Показывать FPS и время кадра</string>
+    <string name="settings_note">Оригинальная игра часто рисует 30 FPS. Режим максимума снимает ограничение порта, но не переписывает игровую логику и не гарантирует 60 FPS. Родное разрешение сильнее расходует батарею.</string>
+    <string name="controls">Сенсорное управление</string><string name="opacity">Общая прозрачность</string><string name="haptics">Виброотклик</string><string name="deadzone">Мёртвая зона стика</string>
+    <string name="save">Сохранить раскладку</string><string name="discard">Отменить</string><string name="reset">Сбросить</string><string name="undo">Назад</string>
+    <string name="editor_hint">Перетаскивай кнопки пальцем. Выбери кнопку, чтобы изменить размер, прозрачность или действие. Раскладка учитывает безопасные зоны экрана.</string>
+    <string name="selected">Выбранная кнопка</string><string name="size">Размер</string><string name="action">Действие</string>
+    <string name="resume">Продолжить</string><string name="pause">Пауза</string><string name="edit">Изменить раскладку</string><string name="back_launcher">Лаунчер</string><string name="saved">Раскладка сохранена</string>
+    <string name="importing">Проверка и импорт…</string><string name="cancel">Отмена</string><string name="error">Не удалось импортировать</string><string name="ok">ОК</string>
+    <string name="licenses">Лицензии открытых компонентов</string><string name="log">Отправить журнал диагностики</string><string name="delete">Удалить файлы игры</string><string name="delete_confirm">Удалить импортированные файлы? Сохранения и раскладка останутся.</string>
+    <string name="import_ok">Файлы установлены. Можно играть.</string><string name="free_space">Мало места для пакета игры и резерва 512 МБ.</string>
+    <string name="weak">Атака</string><string name="strong">Сильная</string><string name="jump">Прыжок</string><string name="shuriken">Сюрикен</string><string name="dash">Рывок</string><string name="switch_turtle">Смена</string><string name="juggle">Жонглирование</string><string name="special">Спецатака</string><string name="start">Старт</string><string name="stick">Движение</string>
+</resources>

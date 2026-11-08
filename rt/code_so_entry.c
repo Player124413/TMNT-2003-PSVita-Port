@@ -1,4 +1,4 @@
-/* Part of tmnt_code.so: the table the Vita runtime reads from the module (its ELF entry point). */
+/* Part of tmnt_code.so: the table the Vita/Android runtime reads from the module (its ELF entry point). */
 #include "code_so.h"
 
 extern const uint32_t guest_func_rvas[];
