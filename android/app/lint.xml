@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Upstream SDL's controller haptics/Bluetooth paths are permission-gated by SDL and the
+         manifest. Keep lint strict for the port's own Java instead of patching fetched sources. -->
+    <issue id="MissingPermission">
+        <ignore path="**/org/libsdl/app/**" />
+    </issue>
+</lint>

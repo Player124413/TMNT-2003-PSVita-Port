@@ -92,7 +92,10 @@ def nm_tool(ndk_clang):
 
 def check(condition, message):
     if not condition:
-        raise SystemExit("APK verification failed: " + message)
+        text = "APK verification failed: " + message
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print("::error::" + text, flush=True)
+        raise SystemExit(text)
 
 
 def elf32_arm(path):

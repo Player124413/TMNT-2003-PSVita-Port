@@ -51,5 +51,5 @@ android {
         }
     }
     packaging { jniLibs { useLegacyPackaging false } }
-    lint { abortOnError true; disable 'MissingTranslation' }
+    lint { lintConfig file('lint.xml'); abortOnError true; disable 'MissingTranslation' }
 }
