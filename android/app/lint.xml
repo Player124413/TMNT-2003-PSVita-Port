@@ -5,4 +5,7 @@
     <issue id="MissingPermission">
         <ignore path="**/org/libsdl/app/**" />
     </issue>
+    <issue id="UnspecifiedRegisterReceiverFlag">
+        <ignore path="**/org/libsdl/app/**" />
+    </issue>
 </lint>
