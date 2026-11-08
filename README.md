@@ -101,6 +101,9 @@ Without the converted movies the game falls back to a software decoder, which is
 
 ## Android
 
+[![Android APK](https://github.com/Player124413/TMNT-2003-PSVita-Port/actions/workflows/android.yml/badge.svg?branch=arena%2F02959fec-tmnt-2003-psvita-port)](https://github.com/Player124413/TMNT-2003-PSVita-Port/actions/workflows/android.yml)
+
+
 An unofficial Android port (launcher, editable multitouch controls, GLES2/gl4es rendering, performance profiles)
 lives in `android/`. CI: `.github/workflows/android.yml` builds and verifies a game-data-free APK. It requires a 32-bit ARM (`armeabi-v7a`) Android 8+ device and the user's own supported PC game.
 The APK contains no game code or data. See [docs/ANDROID.md](docs/ANDROID.md) for build/import instructions,

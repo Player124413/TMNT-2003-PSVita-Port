@@ -14,6 +14,8 @@ on:
       - "recomp/**"
       - "Makefile"
       - "LICENSE"
+      - "README.md"
+      - "docs/ANDROID.md"
   pull_request:
     paths:
       - ".github/workflows/android.yml"
@@ -26,6 +28,8 @@ on:
       - "recomp/**"
       - "Makefile"
       - "LICENSE"
+      - "README.md"
+      - "docs/ANDROID.md"
   workflow_dispatch:
 
 permissions:
