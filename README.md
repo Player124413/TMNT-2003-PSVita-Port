@@ -109,9 +109,10 @@ lives in `android/`. CI: `.github/workflows/android.yml` builds and verifies gam
 The clean APK contains no game code or data. In GitHub Actions, **Android APK → Run workflow** also accepts an
 optional `game_zip_url`: by default it downloads the user's installed PC game ZIP, recompiles it, and publishes a matching
 `TMNT.tmnt.zip` artifact (backed by `.github/workflows/android-game-pack.yml`). That game-derived artifact is
-**public** and requires explicit confirmation. With `private_apk` in a **private repository**, the same URL builds a
-private APK with `tmnt_code.so` and `image.bin` embedded; the launcher then imports only the installed PC game's data.
-Locally, `tools/android/build_private_apk.py` builds that private APK without uploading anything.
+**public** and requires explicit confirmation. With `private_apk`, the same URL builds an embedded APK with
+`tmnt_code.so` and `image.bin` inside (no full media data); the launcher then imports only the installed PC game's data.
+In a private repository that artifact is access-controlled; in a public repository it is public and also requires
+`confirm_public_artifact`. Locally, `tools/android/build_private_apk.py` builds the same embedded APK without uploading anything.
 See [docs/ANDROID.md](docs/ANDROID.md) for build/import instructions, the URL workflows, the ETC2/DXT explanation and the current device-testing status.
 
 ## Building from source

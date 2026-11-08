@@ -12,6 +12,8 @@
 - `test_embedded.py` tests embedded manifest/staging rules with synthetic data only.
 - `test_touch.c` tests the atomic touch/pause/perf contract on the host.
 
-The Gradle project is `../../android`. The clean APK must never contain game code/data. A private APK deliberately embeds
-game-derived code/image and must not be published or uploaded to a public artifact store. Generated intermediates live under
-ignored `build/` paths and must never be committed.
+The Gradle project is `../../android`. The clean APK and the committed repository must never contain game code/data. The
+embedded APK deliberately embeds game-derived code/image (but no full media data): in a private repository its CI artifact is
+access-controlled; in a public repository it is publicly downloadable and the workflow requires explicit `confirm_public_artifact`
+before building. Only publish it if you have the right to redistribute those game-derived files. Generated intermediates live
+under ignored `build/` paths and must never be committed.
