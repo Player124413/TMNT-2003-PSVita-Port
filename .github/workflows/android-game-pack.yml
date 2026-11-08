@@ -9,8 +9,18 @@ on:
         type: string
       confirm_public_artifact:
         description: "I understand that the game-derived artifact will be PUBLIC in this public repository"
-        required: true
+        required: false
         default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      game_zip_url:
+        description: "Direct HTTPS URL (port 443) to a ZIP of your installed PC game; do not include passwords or secret tokens"
+        required: true
+        type: string
+      confirm_public_artifact:
+        description: "I understand that the game-derived artifact will be PUBLIC in this public repository"
+        required: true
         type: boolean
 
 permissions:

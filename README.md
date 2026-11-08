@@ -106,11 +106,11 @@ Without the converted movies the game falls back to a software decoder, which is
 
 An unofficial Android port (launcher, editable multitouch controls, GLES2/gl4es rendering, performance profiles)
 lives in `android/`. CI: `.github/workflows/android.yml` builds and verifies a game-data-free APK. It requires a 32-bit ARM (`armeabi-v7a`) Android 8+ device and the user's own supported PC game.
-The APK contains no game code or data. A separate manual workflow, `.github/workflows/android-game-pack.yml`,
-can take a direct HTTPS ZIP URL of the user's installed PC game, recompile it, and publish a matching
-`TMNT.tmnt.zip` artifact; that game-derived artifact is **public** and requires explicit confirmation.
-See [docs/ANDROID.md](docs/ANDROID.md) for build/import instructions, the URL workflow, the ETC2/DXT
-explanation and the current device-testing status.
+The APK contains no game code or data. In GitHub Actions, **Android APK → Run workflow** also accepts an
+optional `game_zip_url`: it downloads the user's installed PC game ZIP, recompiles it, and publishes a matching
+`TMNT.tmnt.zip` artifact (backed by `.github/workflows/android-game-pack.yml`). That game-derived artifact is
+**public** and requires explicit confirmation. See [docs/ANDROID.md](docs/ANDROID.md) for build/import
+instructions, the URL workflow, the ETC2/DXT explanation and the current device-testing status.
 
 ## Building from source
 

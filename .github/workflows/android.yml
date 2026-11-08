@@ -33,6 +33,17 @@ on:
       - "README.md"
       - "docs/ANDROID.md"
   workflow_dispatch:
+    inputs:
+      game_zip_url:
+        description: "Optional: direct HTTPS ZIP URL of your installed PC game. If set, builds a PUBLIC game pack instead of the plain APK."
+        required: false
+        default: ""
+        type: string
+      confirm_public_artifact:
+        description: "Required with game_zip_url: I understand the game-derived artifact will be PUBLIC"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -52,6 +63,7 @@ env:
 jobs:
   build:
     name: Build and verify APK (no game data)
+    if: github.event_name != 'workflow_dispatch' || inputs.game_zip_url == null || inputs.game_zip_url == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -160,3 +172,11 @@ jobs:
             build/ci-artifacts/synthetic-pack-NO-GAME-DATA.tmnt.zip
           if-no-files-found: warn
           retention-days: 7
+
+  game-pack:
+    name: Build public game pack from URL
+    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != ''
+    uses: ./.github/workflows/android-game-pack.yml
+    with:
+      game_zip_url: ${{ inputs.game_zip_url }}
+      confirm_public_artifact: ${{ inputs.confirm_public_artifact == true || inputs.confirm_public_artifact == 'true' }}
