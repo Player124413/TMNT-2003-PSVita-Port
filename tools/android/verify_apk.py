@@ -160,7 +160,7 @@ def main():
     badging = output(tool_command(bt, "aapt2") + ["dump", "badging", str(apk)])
     print(badging)
     def badge(field):
-        m = re.search(r"^" + re.escape(field) + r":\s*'([^']*)'", badging, re.MULTILINE)
+        m = re.search(r"^" + re.escape(field) + r":\s*(?:name=)?'([^']*)'", badging, re.MULTILINE)
         return m.group(1) if m else None
     def require(value, expected, label):
         if value != expected:
