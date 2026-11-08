@@ -107,8 +107,9 @@ public final class LauncherActivity extends Activity {
         LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); int p=Ui.dp(this,24); box.setPadding(p,p,p,p);
         ScrollView scroll=new ScrollView(this); scroll.addView(box);
         box.addView(Ui.text(this,getString(R.string.profile),16,Ui.TEXT));
-        RadioGroup group=new RadioGroup(this); int[] ids={R.string.balanced,R.string.battery,R.string.performance};
-        for(int i=0;i<3;i++){RadioButton b=new RadioButton(this);b.setId(100+i);b.setText(ids[i]);group.addView(b);} group.check(100+settings.profile()); box.addView(group);
+        RadioGroup group=new RadioGroup(this); int[] labels={R.string.balanced,R.string.battery,R.string.performance};
+        final int[] ids={R.id.profile_balanced,R.id.profile_cool,R.id.profile_performance};
+        for(int i=0;i<3;i++){RadioButton b=new RadioButton(this);b.setId(ids[i]);b.setText(labels[i]);group.addView(b);} group.check(ids[settings.profile()]); box.addView(group);
         Ui.gap(box,this,14); TextView scale=Ui.text(this,getString(R.string.render_scale)+" · "+Math.round(settings.scale()*100)+"%",15,Ui.TEXT); box.addView(scale);
         SeekBar seek=new SeekBar(this); seek.setMax(75); seek.setProgress(Math.round((settings.scale()-.25f)*100)); box.addView(seek);
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int v,boolean u){scale.setText(getString(R.string.render_scale)+" · "+(v+25)+"%");}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});
@@ -117,7 +118,7 @@ public final class LauncherActivity extends Activity {
         CheckBox perf=new CheckBox(this);perf.setText(R.string.perf);perf.setChecked(settings.perf());box.addView(perf);
         box.addView(Ui.text(this,getString(R.string.settings_note),12,Ui.MUTED));
         new AlertDialog.Builder(this).setTitle(R.string.settings).setView(scroll).setNegativeButton(R.string.cancel,null)
-            .setPositiveButton(R.string.save,(d,w)->{settings.put("profile",group.getCheckedRadioButtonId()-100);settings.put("scale",(seek.getProgress()+25)/100f);
+            .setPositiveButton(R.string.save,(d,w)->{int profile=0;for(int i=0;i<ids.length;i++)if(group.getCheckedRadioButtonId()==ids[i])profile=i;settings.put("profile",profile);settings.put("scale",(seek.getProgress()+25)/100f);
                 settings.put("aspect43",aspect.isChecked());settings.put("sound",sound.isChecked());settings.put("perf",perf.isChecked());}).show();
     }
     private void showLicenses() {
