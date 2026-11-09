@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Manifest and staging helpers for private Android APKs with embedded game code/image.
+"""Manifest and staging helpers for embedded Android APKs with game code/image.
 
 The generated directory is a Gradle input, not a repository artifact:
   jniLibs/<abi>/libtmnt_code.so
   assets/tmnt/image.bin
   assets/tmnt/embedded.json
+
+Data validation has two modes:
+  sha256    - the build hashed the seven PC data files; import must match exactly.
+  on-import - the build only received TMNT_EN.EXE; the phone validates names/limits
+              and records SHA-256 when the user imports the data later.
 """
 import hashlib
 import json
@@ -13,13 +18,15 @@ import re
 import shutil
 import sys
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import make_vita_files as vita
 
 FORMAT = 1
 ABI = "armeabi-v7a"
 SUPPORTED_ABIS = {"armeabi-v7a", "arm64-v8a"}
+DATA_SHA256 = "sha256"
+DATA_ON_IMPORT = "on-import"
 MAX_TOTAL = 3 * 1024 * 1024 * 1024
 CHUNK = 1 << 20
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -55,26 +62,34 @@ def compute_id(manifest):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def make_manifest(code, image, runtime, exe_sha1, game_folder, abi=ABI):
-    if abi not in SUPPORTED_ABIS:
-        raise EmbeddedGameError("unsupported Android ABI: " + str(abi))
-    game_folder = Path(game_folder)
-    data = {}
-    total = 0
+def data_aliases():
+    aliases = {}
     for source, dest in vita.DATA_FILES.items():
-        path = vita.find_file(str(game_folder), source)
-        if not path:
-            raise EmbeddedGameError("missing PC game file: " + source)
-        meta = file_meta(path)
         names = [source]
         if dest.casefold() != source.casefold():
             names.append(dest)
-        meta["source"] = source
-        meta["names"] = names
-        data[dest] = meta
-        total += meta["size"]
-        if total > MAX_TOTAL:
-            raise EmbeddedGameError("PC game data exceeds 3 GiB")
+        aliases[dest] = {"source": source, "names": names}
+    return aliases
+
+
+def make_manifest(code, image, runtime, exe_sha1, game_folder, abi=ABI, defer_data=False):
+    if abi not in SUPPORTED_ABIS:
+        raise EmbeddedGameError("unsupported Android ABI: " + str(abi))
+    policy = DATA_ON_IMPORT if defer_data else DATA_SHA256
+    data = data_aliases()
+    if not defer_data:
+        game_folder = Path(game_folder)
+        total = 0
+        for source, dest in vita.DATA_FILES.items():
+            path = vita.find_file(str(game_folder), source)
+            if not path:
+                raise EmbeddedGameError("missing PC game file: " + source)
+            meta = file_meta(path)
+            meta.update(data[dest])
+            data[dest] = meta
+            total += meta["size"]
+            if total > MAX_TOTAL:
+                raise EmbeddedGameError("PC game data exceeds 3 GiB")
     manifest = {
         "format": FORMAT,
         "abi": abi,
@@ -82,6 +97,7 @@ def make_manifest(code, image, runtime, exe_sha1, game_folder, abi=ABI):
         "image": file_meta(image, "image.bin"),
         "code": file_meta(code, "libtmnt_code.so"),
         "runtime_sha256": digest(runtime),
+        "data_validation": policy,
         "data": data,
     }
     manifest["id"] = compute_id(manifest)
@@ -109,6 +125,9 @@ def validate_manifest(manifest, check_supported_exe=True):
         if not isinstance(meta, dict):
             raise EmbeddedGameError("missing " + key + " metadata")
         _validate_file_meta(meta)
+    policy = manifest.get("data_validation", DATA_SHA256)
+    if policy not in (DATA_SHA256, DATA_ON_IMPORT):
+        raise EmbeddedGameError("wrong embedded data validation policy")
     data = manifest.get("data")
     if not isinstance(data, dict) or set(data) != set(vita.DATA_FILES.values()):
         raise EmbeddedGameError("embedded data file list mismatch")
@@ -116,7 +135,6 @@ def validate_manifest(manifest, check_supported_exe=True):
     for dest, meta in data.items():
         if not isinstance(meta, dict):
             raise EmbeddedGameError("invalid data metadata for " + dest)
-        _validate_file_meta(meta)
         names = meta.get("names")
         if not isinstance(names, list) or not names:
             raise EmbeddedGameError("missing source names for " + dest)
@@ -127,9 +145,13 @@ def validate_manifest(manifest, check_supported_exe=True):
             seen.add(name.casefold())
         if meta.get("source") not in names:
             raise EmbeddedGameError("source name missing from aliases for " + dest)
-        total += meta["size"]
-        if total > MAX_TOTAL:
-            raise EmbeddedGameError("embedded data exceeds 3 GiB")
+        if policy == DATA_SHA256:
+            _validate_file_meta(meta)
+            total += meta["size"]
+            if total > MAX_TOTAL:
+                raise EmbeddedGameError("embedded data exceeds 3 GiB")
+        elif "size" in meta or "sha256" in meta:
+            raise EmbeddedGameError("on-import data metadata must not contain build-time hashes: " + dest)
     return manifest
 
 

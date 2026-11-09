@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Download a user-supplied PC-game ZIP and extract it safely for Android recompilation.
+"""Download a user-supplied PC-game ZIP or EXE and validate it safely for Android recompilation.
 
 The URL is read from an environment variable and is never printed. Only HTTPS URLs are
 accepted. DNS answers are validated and pinned for the TLS connection, redirects are
-bounded, and the archive is size-limited and validated before extraction.
+bounded, and the archive is size-limited and validated before extraction. With --exe-only,
+a raw supported TMNT_EN.EXE or a ZIP containing only that EXE is accepted; the seven media
+files stay on the user's phone and are imported later.
 """
 import argparse
 import hashlib
@@ -30,6 +32,7 @@ DEFAULT_MAX_DOWNLOAD_MIB = 4096
 DEFAULT_MAX_EXPANDED_MIB = 6144
 DEFAULT_MAX_ENTRIES = 50000
 DEFAULT_TIMEOUT_SECONDS = 1800
+SUPPORTED_EXE_BYTES = 2150400
 MAX_REDIRECTS = 5
 REDIRECT_CODES = {301, 302, 303, 307, 308}
 
@@ -336,7 +339,7 @@ def _named_files(root, name):
     return sorted(matches, key=lambda p: (len(p.relative_to(root).parts), str(p).casefold()))
 
 
-def locate_game(root):
+def locate_game(root, exe_only=False):
     candidates = _named_files(root, "TMNT_EN.EXE")
     supported = [path for path in candidates if file_digest(path, "sha1") == vita.EXE_SHA1]
     if not supported:
@@ -344,6 +347,11 @@ def locate_game(root):
     if len(supported) != 1:
         raise GameArchiveError("The game ZIP contains multiple supported TMNT_EN.EXE files; keep only one")
     exe = supported[0]
+    if exe_only:
+        files = [path for path in root.rglob("*") if path.is_file()]
+        if len(files) != 1 or files[0].name.casefold() != "tmnt_en.exe":
+            raise GameArchiveError("EXE-only source must contain only TMNT_EN.EXE")
+        return exe.parent
     missing = [name for name in vita.DATA_FILES if not _named_files(exe.parent, name)]
     if missing:
         raise GameArchiveError("Missing game files below the EXE directory: " + ", ".join(missing))
@@ -363,22 +371,53 @@ def run(args):
     work.chmod(0o700)
     archive = work / "source.zip"
     game = work / "game"
-    print("Downloading the user-supplied game ZIP (URL withheld)...", flush=True)
+    print("Downloading the user-supplied build source (URL withheld)...", flush=True)
     size = download(url, archive, args.max_download_mib * (1 << 20), args.timeout_seconds)
-    archive_hash = file_digest(archive)
-    print("Downloaded %d MiB; SHA-256 %s" % (size // (1 << 20), archive_hash), flush=True)
+    source_hash = file_digest(archive)
+    print("Downloaded %d bytes; SHA-256 %s" % (size, source_hash), flush=True)
+    with archive.open("rb") as f:
+        magic = f.read(4)
+    if magic[:2] == b"MZ":
+        if not args.exe_only:
+            archive.unlink(missing_ok=True)
+            raise GameArchiveError("A raw EXE is only accepted with --exe-only; the full game pack needs the data files too")
+        if size != SUPPORTED_EXE_BYTES or file_digest(archive, "sha1") != vita.EXE_SHA1:
+            archive.unlink(missing_ok=True)
+            raise GameArchiveError("Downloaded EXE is not the supported TMNT_EN.EXE (size/SHA-1 mismatch)")
+        game.mkdir(mode=0o700)
+        archive.replace(game / "TMNT_EN.EXE")
+        (game / "TMNT_EN.EXE").chmod(0o600)
+        report = {
+            "source_kind": "exe",
+            "source_sha256": source_hash,
+            "source_bytes": size,
+            "expanded_bytes": size,
+            "game_dir": ".",
+            "exe_sha1": vita.EXE_SHA1,
+            "data_validated": False,
+        }
+        (work / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print("Validated supported TMNT_EN.EXE; media files are not required at build time.", flush=True)
+        return report
+    if magic[:4] != b"PK\x03\x04":
+        archive.unlink(missing_ok=True)
+        raise GameArchiveError("Build source must be a ZIP archive or a raw TMNT_EN.EXE")
     expanded = extract_zip(archive, game, args.max_entries, args.max_expanded_mib * (1 << 20))
-    folder = locate_game(game)
+    folder = locate_game(game, exe_only=args.exe_only)
     relative = folder.relative_to(game).as_posix()
     report = {
-        "archive_sha256": archive_hash,
+        "source_kind": "zip",
+        "source_sha256": source_hash,
+        "source_bytes": size,
+        "archive_sha256": source_hash,
         "archive_bytes": size,
         "expanded_bytes": expanded,
         "game_dir": relative,
         "exe_sha1": vita.EXE_SHA1,
+        "data_validated": not args.exe_only,
     }
     (work / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print("Extracted and validated the installed game; directory: " + relative, flush=True)
+    print("Extracted and validated the build source; directory: " + relative, flush=True)
     return report
 
 
@@ -390,6 +429,7 @@ def main(argv=None):
     parser.add_argument("--max-expanded-mib", type=int, default=DEFAULT_MAX_EXPANDED_MIB)
     parser.add_argument("--max-entries", type=int, default=DEFAULT_MAX_ENTRIES)
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    parser.add_argument("--exe-only", action="store_true", help="accept only the supported EXE; defer media validation to phone import")
     args = parser.parse_args(argv)
     if min(args.max_download_mib, args.max_expanded_mib, args.max_entries, args.timeout_seconds) <= 0:
         print("Error: archive limits must be positive", file=sys.stderr)
