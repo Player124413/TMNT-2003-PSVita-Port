@@ -190,8 +190,14 @@ jobs:
           from pathlib import Path
           p = Path("build/ci/gradle-clean.log")
           if p.is_file():
-              text = p.read_text(errors="replace")[-4000:]
-              print("::error::Gradle failure tail%0A" + text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+              lines = p.read_text(errors="replace").splitlines()
+              keys = ("error:", "FAILED", "What went wrong", "Caused by:", "Execution failed", "Could not", "Exception", "> Task")
+              keep = []
+              for i, line in enumerate(lines):
+                  if any(k in line for k in keys):
+                      keep.extend(lines[max(0, i - 2):i + 8])
+              text = "\n".join(dict.fromkeys(keep))[-6000:] or "\n".join(lines[-80:])
+              print("::error::Gradle failure details%0A" + text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
           PY
 
       - name: Verify APK and exercise game-pack ABI without game data
