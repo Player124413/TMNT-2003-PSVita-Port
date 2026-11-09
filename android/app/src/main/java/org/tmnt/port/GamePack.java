@@ -87,13 +87,16 @@ public final class GamePack {
         }
     }
     public static void validateElf(File f) throws Exception {
+        boolean arm64 = "arm64-v8a".equals(abi());
+        int elfClass = arm64 ? 2 : 1, machine = arm64 ? 183 : 40;
         try (java.io.RandomAccessFile e = new java.io.RandomAccessFile(f, "r")) {
-            byte[] h = new byte[52]; e.readFully(h);
-            if (h[0] != 127 || h[1] != 'E' || h[2] != 'L' || h[3] != 'F' || h[4] != 1 || h[5] != 1
-                || h[16] != 3 || h[18] != 40 || h[20] != 1)
-                throw new IllegalArgumentException("Game module must be ELF32 little-endian ARM");
+            byte[] h = new byte[64]; e.readFully(h);
+            if (h[0] != 127 || h[1] != 'E' || h[2] != 'L' || h[3] != 'F' || (h[4] & 255) != elfClass || h[5] != 1
+                || u16(h, 16) != 3 || u16(h, 18) != machine || u16(h, 20) != 1)
+                throw new IllegalArgumentException("Game module must be an ELF shared object for " + abi());
         }
     }
+    private static int u16(byte[] b, int off) { return (b[off] & 255) | ((b[off + 1] & 255) << 8); }
     public static void remove(Context c) {
         for (String name : requiredFiles()) { File f = new File(root(c), name); if (!f.delete() && f.exists()) throw new IllegalStateException("Could not remove " + name); }
         marker(c).delete();

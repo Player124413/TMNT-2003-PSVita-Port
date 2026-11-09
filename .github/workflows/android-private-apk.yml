@@ -4,8 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       game_zip_url:
-        description: "Direct HTTPS URL (port 443) to a ZIP of your installed PC game; do not include passwords or secret tokens"
-        required: true
+        description: "HTTPS ZIP of the installed PC game (EXE + data). Leave empty when using exe_url."
+        required: false
+        default: ""
+        type: string
+      exe_url:
+        description: "HTTPS URL to TMNT_EN.EXE only (~2.15 MiB), or a ZIP containing only that EXE; media is imported on the phone later"
+        required: false
+        default: ""
         type: string
       target_abi:
         description: "CPU ABI to build"
@@ -23,8 +29,12 @@ on:
   workflow_call:
     inputs:
       game_zip_url:
-        description: "Direct HTTPS URL (port 443) to a ZIP of your installed PC game; do not include passwords or secret tokens"
-        required: true
+        description: "HTTPS ZIP of the installed PC game (EXE + data); mutually exclusive with exe_url"
+        required: false
+        type: string
+      exe_url:
+        description: "HTTPS URL to TMNT_EN.EXE only, or a ZIP containing only that EXE; mutually exclusive with game_zip_url"
+        required: false
         type: string
       target_abi:
         description: "CPU ABI to build (armeabi-v7a or arm64-v8a)"
@@ -76,6 +86,20 @@ jobs:
             exit 1
           fi
           echo "The source URL will not be printed."
+
+      - name: Select exactly one build source
+        env:
+          GAME_ZIP_URL: ${{ inputs.game_zip_url }}
+          EXE_URL: ${{ inputs.exe_url }}
+        run: |
+          python3 - <<'PY'
+          import os
+          game = bool(os.environ.get("GAME_ZIP_URL", "").strip())
+          exe = bool(os.environ.get("EXE_URL", "").strip())
+          if game == exe:
+              raise SystemExit("::error::Fill exactly one source: game_zip_url or exe_url.")
+          print("Build source:", "EXE-only" if exe else "full game ZIP")
+          PY
 
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -137,20 +161,29 @@ jobs:
       - name: Fetch pinned native sources
         run: python tools/android/fetch_deps.py
 
-      - name: Download and extract the user-supplied game ZIP
+      - name: Download and validate the user-supplied build source
         env:
           GAME_ZIP_URL: ${{ inputs.game_zip_url }}
+          EXE_URL: ${{ inputs.exe_url }}
         run: |
-          python tools/android/fetch_game_zip.py --work-dir build/android-game-source
+          if [ -n "${EXE_URL// /}" ]; then
+            python tools/android/fetch_game_zip.py --exe-only --url-env EXE_URL --work-dir build/android-game-source \
+              --max-download-mib 8 --max-expanded-mib 8 --max-entries 100 --timeout-seconds 300
+          else
+            python tools/android/fetch_game_zip.py --work-dir build/android-game-source
+          fi
           rm -f build/android-game-source/source.zip
 
       - name: Build embedded APK with code and image
         run: |
           GAME_DIR="$(python -c 'import json; from pathlib import Path; r=json.loads(Path("build/android-game-source/report.json").read_text()); print(Path("build/android-game-source/game") / r["game_dir"])')"
           mkdir -p build/android-embedded-artifacts
+          DATA_VALIDATED="$(python -c 'import json; from pathlib import Path; r=json.loads(Path("build/android-game-source/report.json").read_text()); print("true" if r.get("data_validated", True) else "false")')"
+          ARGS=()
+          if [ "$DATA_VALIDATED" = "false" ]; then ARGS+=(--exe-only); fi
           python tools/android/build_private_apk.py "$GAME_DIR" build/android-embedded-artifacts/TMNT-2003-embedded.apk \
             --ndk "$ANDROID_HOME/ndk/$NDK_VERSION" \
-            --abi "$TARGET_ABI"
+            --abi "$TARGET_ABI" "${ARGS[@]}"
 
       - name: Verify the embedded APK
         run: |
@@ -171,6 +204,9 @@ jobs:
           apk = out / "TMNT-2003-embedded.apk"
           report = json.loads(Path("build/android-game-source/report.json").read_text(encoding="utf-8"))
           visibility = os.environ["VISIBILITY"]
+          source_kind = report.get("source_kind", "zip")
+          source_hash = report.get("source_sha256") or report["archive_sha256"]
+          data_validation = "sha256" if report.get("data_validated", True) else "on-import"
 
           def sha256(path):
               h = hashlib.sha256()
@@ -190,11 +226,15 @@ jobs:
           else:
               header = "PRIVATE game-derived embedded APK. Do not publish or share this artifact."
               readme_note = "APK приватный: не публикуйте его.\n"
+          if data_validation == "on-import":
+              readme_note += ("Сборка получила только EXE: хеши .DAT/.afs не зашивались. Лаунчер проверит состав/лимиты и запишет SHA-256 при импорте; используйте данные той же версии игры.\n")
           info = [
               header,
               f"Commit: {os.environ['GITHUB_SHA']}",
               f"Run: {run_url}",
-              f"Source ZIP SHA-256: {report['archive_sha256']}",
+              f"Source kind: {source_kind}",
+              f"Source SHA-256: {source_hash}",
+              f"Data validation: {data_validation}",
               f"Supported EXE SHA-1: {report['exe_sha1']}",
               f"ABI: {os.environ['TARGET_ABI']}",
               f"APK SHA-256: {checksum}",

@@ -21,18 +21,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/** Private-APK import: copy only the seven PC data files and check them against the embedded build. */
+/** Embedded-APK import: copy only the seven PC data files. Hashed builds match the build; EXE-only builds hash on import. */
 public final class InstalledGameImporter {
     private static final int MAX_ENTRIES = 50000;
     private static final int MAX_DEPTH = 16;
+    private static final long MiB = 1024L * 1024L;
     private InstalledGameImporter() {}
 
     public static void importZip(Context c, Uri uri, AtomicBoolean cancelled, PackImporter.Progress progress) throws Exception {
         requireEmbedded();
         JSONObject data = EmbeddedGame.data(c);
+        boolean deferred = EmbeddedGame.DATA_ON_IMPORT.equals(EmbeddedGame.dataValidation(c));
         checkSpace(c);
         File staging = staging(c);
         Set<String> done = new HashSet<>();
+        JSONObject files = new JSONObject();
+        long[] total = {0};
         try {
             try (InputStream raw = c.getContentResolver().openInputStream(uri);
                  ZipInputStream zip = new ZipInputStream(new BufferedInputStream(raw, 1 << 16))) {
@@ -47,13 +51,22 @@ public final class InstalledGameImporter {
                         String base = name.substring(slash + 1).toLowerCase(Locale.ROOT);
                         if (!base.isEmpty()) {
                             for (String dest : GamePack.DATA_FILES) {
-                                if (done.contains(dest)) continue;
                                 JSONObject meta = data.getJSONObject(dest);
                                 if (!names(meta).contains(base)) continue;
-                                long known = entry.getSize();
-                                if (known >= 0 && known != meta.getLong("size")) continue;
-                                if (copyExpected(zip, staging, dest, meta, cancelled)) {
-                                    done.add(dest); progress.message(dest + " · " + (meta.getLong("size") / 1048576) + " MB");
+                                if (done.contains(dest)) {
+                                    if (deferred) throw new IllegalArgumentException("Duplicate PC game file candidate: " + dest);
+                                    continue;
+                                }
+                                if (deferred) {
+                                    files.put(dest, copyDiscovered(c, zip, staging, dest, cancelled, total));
+                                    done.add(dest); progress.message(dest + " · " + (files.getJSONObject(dest).getLong("size") / MiB) + " MB");
+                                } else {
+                                    long known = entry.getSize();
+                                    if (known >= 0 && known != meta.getLong("size")) continue;
+                                    if (copyExpected(zip, staging, dest, meta, cancelled)) {
+                                        files.put(dest, expectedMeta(meta));
+                                        done.add(dest); progress.message(dest + " · " + (meta.getLong("size") / MiB) + " MB");
+                                    }
                                 }
                             }
                         }
@@ -63,26 +76,30 @@ public final class InstalledGameImporter {
                 }
             }
             requireComplete(done);
-            commitData(c, staging, data);
+            commitData(c, staging, files);
         } finally { PackImporter.deleteTree(staging); }
     }
 
     public static void importTree(Context c, Uri tree, AtomicBoolean cancelled, PackImporter.Progress progress) throws Exception {
         requireEmbedded();
         JSONObject data = EmbeddedGame.data(c);
+        boolean deferred = EmbeddedGame.DATA_ON_IMPORT.equals(EmbeddedGame.dataValidation(c));
         checkSpace(c);
         File staging = staging(c);
         Set<String> done = new HashSet<>();
+        JSONObject files = new JSONObject();
+        long[] total = {0};
         try {
             int[] count = {0};
-            scan(c, tree, DocumentsContract.getTreeDocumentId(tree), 0, count, staging, data, done, cancelled, progress);
+            scan(c, tree, DocumentsContract.getTreeDocumentId(tree), 0, count, staging, data, done, files, total, deferred, cancelled, progress);
             requireComplete(done);
-            commitData(c, staging, data);
+            commitData(c, staging, files);
         } finally { PackImporter.deleteTree(staging); }
     }
 
     private static boolean scan(Context c, Uri tree, String parent, int depth, int[] count, File staging,
-                                JSONObject data, Set<String> done, AtomicBoolean cancelled, PackImporter.Progress progress) throws Exception {
+                                JSONObject data, Set<String> done, JSONObject files, long[] total, boolean deferred,
+                                AtomicBoolean cancelled, PackImporter.Progress progress) throws Exception {
         if (cancelled.get()) throw new InterruptedException("Import cancelled");
         if (depth > MAX_DEPTH) throw new IllegalArgumentException("Game folder is nested too deeply");
         ContentResolver resolver = c.getContentResolver();
@@ -102,29 +119,78 @@ public final class InstalledGameImporter {
                 String name = cursor.getString(nameColumn);
                 String mime = cursor.getString(mimeColumn);
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                    if (scan(c, tree, document, depth + 1, count, staging, data, done, cancelled, progress)) return true;
+                    if (scan(c, tree, document, depth + 1, count, staging, data, done, files, total, deferred, cancelled, progress)) return true;
                     continue;
                 }
                 if (name == null) continue;
                 String base = name.toLowerCase(Locale.ROOT);
                 long known = sizeColumn >= 0 && !cursor.isNull(sizeColumn) ? cursor.getLong(sizeColumn) : -1;
                 for (String dest : GamePack.DATA_FILES) {
-                    if (done.contains(dest)) continue;
                     JSONObject meta = data.getJSONObject(dest);
                     if (!names(meta).contains(base)) continue;
-                    if (known >= 0 && known != meta.getLong("size")) continue;
+                    if (done.contains(dest)) {
+                        if (deferred) throw new IllegalArgumentException("Duplicate PC game file candidate: " + dest);
+                        continue;
+                    }
                     Uri file = DocumentsContract.buildDocumentUriUsingTree(tree, document);
                     try (InputStream in = resolver.openInputStream(file)) {
                         if (in == null) throw new java.io.IOException("Cannot open " + name);
-                        if (copyExpected(in, staging, dest, meta, cancelled)) {
-                            done.add(dest); progress.message(dest + " · " + (meta.getLong("size") / 1048576) + " MB");
+                        if (deferred) {
+                            files.put(dest, copyDiscovered(c, in, staging, dest, cancelled, total));
+                            done.add(dest); progress.message(dest + " · " + (files.getJSONObject(dest).getLong("size") / MiB) + " MB");
                             if (done.size() == GamePack.DATA_FILES.size()) return true;
+                        } else {
+                            if (known >= 0 && known != meta.getLong("size")) continue;
+                            if (copyExpected(in, staging, dest, meta, cancelled)) {
+                                files.put(dest, expectedMeta(meta));
+                                done.add(dest); progress.message(dest + " · " + (meta.getLong("size") / MiB) + " MB");
+                                if (done.size() == GamePack.DATA_FILES.size()) return true;
+                            }
                         }
                     }
                 }
             }
         }
         return false;
+    }
+
+    private static JSONObject expectedMeta(JSONObject meta) throws Exception {
+        JSONObject f = new JSONObject();
+        f.put("size", meta.getLong("size"));
+        f.put("sha256", meta.getString("sha256"));
+        return f;
+    }
+
+    /** EXE-only build: validate names/limits, compute SHA-256 on the phone, and record it for future integrity checks. */
+    private static JSONObject copyDiscovered(Context c, InputStream in, File staging, String dest,
+                                             AtomicBoolean cancelled, long[] total) throws Exception {
+        long remaining = GamePack.MAX_TOTAL - total[0];
+        if (remaining <= 0) throw new IllegalArgumentException("Game data exceeds 3 GiB");
+        requireFree(c, 512 * MiB);
+        File tmp = new File(staging, dest + ".candidate"), target = new File(staging, dest);
+        tmp.delete();
+        MessageDigest hash = MessageDigest.getInstance("SHA-256");
+        long size = 0, nextSpaceCheck = 64 * MiB;
+        try (FileOutputStream out = new FileOutputStream(tmp)) {
+            byte[] buffer = new byte[1 << 16]; int n;
+            while ((n = in.read(buffer)) >= 0) {
+                if (cancelled.get()) throw new InterruptedException("Import cancelled");
+                if (n == 0) continue;
+                if (size + n > remaining) throw new IllegalArgumentException("Game data exceeds 3 GiB");
+                out.write(buffer, 0, n); hash.update(buffer, 0, n); size += n;
+                if (size >= nextSpaceCheck) { requireFree(c, 256 * MiB); nextSpaceCheck += 64 * MiB; }
+            }
+            out.getFD().sync();
+        } catch (Exception e) { tmp.delete(); throw e; }
+        if (size == 0) { tmp.delete(); throw new IllegalArgumentException("Empty PC game file: " + dest); }
+        requireFree(c, 256 * MiB);
+        if (target.exists()) { tmp.delete(); throw new IllegalStateException("Duplicate staged PC game file: " + dest); }
+        if (!tmp.renameTo(target)) { tmp.delete(); throw new java.io.IOException("Cannot stage " + dest); }
+        total[0] += size;
+        JSONObject f = new JSONObject();
+        f.put("size", size);
+        f.put("sha256", GamePack.hex(hash.digest()));
+        return f;
     }
 
     /** Copies a candidate only if its exact size and SHA-256 match the game used to build this APK. */
@@ -151,14 +217,7 @@ public final class InstalledGameImporter {
         return true;
     }
 
-    private static void commitData(Context c, File staging, JSONObject data) throws Exception {
-        JSONObject files = new JSONObject();
-        for (String name : GamePack.DATA_FILES) {
-            JSONObject meta = data.getJSONObject(name), f = new JSONObject();
-            f.put("size", meta.getLong("size"));
-            f.put("sha256", meta.getString("sha256"));
-            files.put(name, f);
-        }
+    private static void commitData(Context c, File staging, JSONObject files) throws Exception {
         JSONObject manifest = new JSONObject();
         manifest.put("format", GamePack.EMBEDDED_FORMAT);
         manifest.put("abi", GamePack.abi());
@@ -175,9 +234,14 @@ public final class InstalledGameImporter {
         if (!BuildConfig.EMBEDDED_GAME) throw new IllegalArgumentException("This APK needs a full .tmnt.zip pack");
     }
     private static void checkSpace(Context c) throws Exception {
-        long required = EmbeddedGame.dataTotal(c) + 512L * 1024 * 1024;
+        long known = EmbeddedGame.dataTotal(c);
+        long required = known >= 0 ? known + 512 * MiB : 512 * MiB;
         if (new StatFs(GamePack.root(c).getAbsolutePath()).getAvailableBytes() < required)
-            throw new java.io.IOException("Not enough free space for game data and a 512 MiB safety margin");
+            throw new java.io.IOException("Not enough free space for game data and a safety margin");
+    }
+    private static void requireFree(Context c, long margin) throws Exception {
+        if (new StatFs(GamePack.root(c).getAbsolutePath()).getAvailableBytes() < margin)
+            throw new java.io.IOException("Not enough free space while importing game data");
     }
     private static File staging(Context c) throws Exception {
         File dir = new File(GamePack.root(c), ".import-" + UUID.randomUUID());

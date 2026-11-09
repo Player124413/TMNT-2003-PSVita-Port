@@ -7,6 +7,8 @@
 The APK is personalized from the user's supported TMNT_EN.EXE. After installing it,
 the launcher imports only the seven data files from the same installed PC game
 (either a ZIP or a folder copied to the phone). No game pack is needed on the phone.
+With --exe-only the build does not need the seven media files; the launcher validates
+names/limits and records their SHA-256 during import instead of matching build-time hashes.
 
 Keep the APK private. This script never uploads anything and writes game-derived
 intermediates only under build/, which is ignored by Git.
@@ -68,14 +70,15 @@ def runtime_from_apk(apk, destination, abi):
     return destination
 
 
-def validate_game(folder):
+def validate_game(folder, exe_only=False):
     exe = vita.find_file(str(folder), "TMNT_EN.EXE")
     if not exe or vita.sha1(exe) != vita.EXE_SHA1:
         die("supported TMNT_EN.EXE not found (SHA-1 " + vita.EXE_SHA1 + ")")
     exe_folder = Path(exe).parent
-    missing = [name for name in vita.DATA_FILES if not vita.find_file(str(exe_folder), name)]
-    if missing:
-        die("missing next to the EXE: " + ", ".join(missing))
+    if not exe_only:
+        missing = [name for name in vita.DATA_FILES if not vita.find_file(str(exe_folder), name)]
+        if missing:
+            die("missing next to the EXE: " + ", ".join(missing))
     return Path(exe), exe_folder
 
 
@@ -87,6 +90,7 @@ def main(argv=None):
     parser.add_argument("--abi", choices=sorted(android.ABIS), default="arm64-v8a", help="APK ABI to build (default: arm64-v8a)")
     parser.add_argument("--work-dir", type=Path, default=ROOT / "build/android-private-game",
                         help="Gradle input directory for embedded code/image (default: build/android-private-game)")
+    parser.add_argument("--exe-only", action="store_true", help="build from TMNT_EN.EXE alone; validate/hash media on the phone during import")
     parser.add_argument("--skip-verify", action="store_true", help="skip tools/android/verify_apk.py (not recommended)")
     args = parser.parse_args(argv)
 
@@ -99,7 +103,7 @@ def main(argv=None):
         die("output must end in .apk")
     if work_dir == ROOT or ROOT not in work_dir.parents:
         die("work-dir must be inside the repository (normally under build/)")
-    exe, exe_folder = validate_game(game)
+    exe, exe_folder = validate_game(game, args.exe_only)
     clang = android.find_ndk(args.ndk)
     abi = args.abi
 
@@ -121,7 +125,7 @@ def main(argv=None):
         temp = Path(tmp)
         module = temp / "libtmnt_code.so"
         android.build_module(clang, runtime, module, temp, soname="libtmnt_code.so", abi=abi)
-        manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, exe_folder, abi=abi)
+        manifest = embedded.make_manifest(module, image, runtime, vita.EXE_SHA1, None if args.exe_only else exe_folder, abi=abi, defer_data=args.exe_only)
         embedded.write_directory(work_dir, module, image, manifest)
 
     print("Packaging the private APK with embedded code and image.", flush=True)
@@ -138,7 +142,7 @@ def main(argv=None):
             temp = Path(tmp)
             module = temp / "libtmnt_code.so"
             android.build_module(clang, packaged_runtime, module, temp, soname="libtmnt_code.so", abi=abi)
-            manifest = embedded.make_manifest(module, image, packaged_runtime, vita.EXE_SHA1, exe_folder, abi=abi)
+            manifest = embedded.make_manifest(module, image, packaged_runtime, vita.EXE_SHA1, None if args.exe_only else exe_folder, abi=abi, defer_data=args.exe_only)
             embedded.write_directory(work_dir, module, image, manifest)
         gradle("-PtmntAbi=" + abi, "-PtmntEmbeddedDir=" + str(work_dir), ":app:assembleDebug")
         final_apk = apk_path(True)
@@ -161,7 +165,11 @@ def main(argv=None):
     print("Wrote private APK:", output)
     print("ABI:", abi)
     print("SHA-256:", checksum)
-    print("Install it, then import a ZIP or folder of the same installed PC game. Keep the APK private.")
+    if args.exe_only:
+        print("Install it, then import the seven PC data files; their hashes are recorded on the phone during import.")
+    else:
+        print("Install it, then import a ZIP or folder of the same installed PC game.")
+    print("Keep the APK private unless you have the right to redistribute the embedded code/image.")
     return 0
 
 

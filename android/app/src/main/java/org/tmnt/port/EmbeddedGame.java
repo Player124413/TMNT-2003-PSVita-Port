@@ -15,6 +15,8 @@ import java.util.Set;
 public final class EmbeddedGame {
     public static final String MANIFEST_ASSET = "tmnt/embedded.json";
     public static final String IMAGE_ASSET = "tmnt/image.bin";
+    public static final String DATA_SHA256 = "sha256";
+    public static final String DATA_ON_IMPORT = "on-import";
     private static JSONObject cached;
     private EmbeddedGame() {}
 
@@ -28,12 +30,14 @@ public final class EmbeddedGame {
         if (!id.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Invalid embedded game id");
         fileMeta(j.getJSONObject("image"));
         fileMeta(j.getJSONObject("code"));
+        String policy = j.optString("data_validation", DATA_SHA256);
+        if (!DATA_SHA256.equals(policy) && !DATA_ON_IMPORT.equals(policy))
+            throw new IllegalArgumentException("Wrong embedded data validation policy");
         JSONObject data = j.getJSONObject("data");
         if (data.length() != GamePack.DATA_FILES.size()) throw new IllegalArgumentException("Incomplete embedded data manifest");
         long total = 0;
         for (String name : GamePack.DATA_FILES) {
             JSONObject d = data.getJSONObject(name);
-            fileMeta(d);
             JSONArray names = d.getJSONArray("names");
             if (names.length() == 0) throw new IllegalArgumentException("Missing source names for " + name);
             Set<String> seen = new HashSet<>();
@@ -42,8 +46,16 @@ public final class EmbeddedGame {
                 if (n.isEmpty() || n.indexOf('/') >= 0 || n.indexOf('\\') >= 0 || !seen.add(n.toLowerCase(java.util.Locale.ROOT)))
                     throw new IllegalArgumentException("Invalid source name for " + name);
             }
-            total += d.getLong("size");
-            if (total > GamePack.MAX_TOTAL) throw new IllegalArgumentException("Embedded data exceeds 3 GiB");
+            String source = d.getString("source");
+            if (!seen.contains(source.toLowerCase(java.util.Locale.ROOT)))
+                throw new IllegalArgumentException("Source name missing from aliases for " + name);
+            if (DATA_SHA256.equals(policy)) {
+                fileMeta(d);
+                total += d.getLong("size");
+                if (total > GamePack.MAX_TOTAL) throw new IllegalArgumentException("Embedded data exceeds 3 GiB");
+            } else if (d.has("size") || d.has("sha256")) {
+                throw new IllegalArgumentException("On-import data metadata must not contain build-time hashes: " + name);
+            }
         }
         cached = j;
         return j;
@@ -56,7 +68,10 @@ public final class EmbeddedGame {
     }
     public static String id(Context c) throws Exception { return manifest(c).getString("id"); }
     public static JSONObject data(Context c) throws Exception { return manifest(c).getJSONObject("data"); }
+    public static String dataValidation(Context c) throws Exception { return manifest(c).optString("data_validation", DATA_SHA256); }
+    /** Exact total for build-time hashed data, or -1 when hashes are recorded during phone import. */
     public static long dataTotal(Context c) throws Exception {
+        if (DATA_ON_IMPORT.equals(dataValidation(c))) return -1;
         JSONObject data = data(c); long total = 0;
         for (String name : GamePack.DATA_FILES) total += data.getJSONObject(name).getLong("size");
         return total;

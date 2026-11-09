@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import stat
 import struct
@@ -208,6 +209,67 @@ class ZipTests(unittest.TestCase):
                 (app / "bgm.afs").unlink()
                 with self.assertRaises(fetch.GameArchiveError):
                     fetch.locate_game(root)
+
+
+class ExeOnlySourceTests(unittest.TestCase):
+    def args(self, work, exe_only=True):
+        return mock.Mock(url_env="GAME_ZIP_URL", work_dir=work, max_download_mib=8, max_expanded_mib=8,
+                         max_entries=100, timeout_seconds=10, exe_only=exe_only)
+
+    def fake_download(self, data):
+        def write(url, destination, max_bytes, timeout_seconds):
+            destination.write_bytes(data)
+            return len(data)
+        return write
+
+    def test_raw_supported_exe_needs_no_media(self):
+        exe = b"MZfake supported exe"
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            with mock.patch.dict(os.environ, {"GAME_ZIP_URL": "https://example.com/TMNT_EN.EXE"}), \
+                 mock.patch.object(fetch.vita, "EXE_SHA1", hashlib.sha1(exe).hexdigest()), \
+                 mock.patch.object(fetch, "SUPPORTED_EXE_BYTES", len(exe)), \
+                 mock.patch.object(fetch, "download", side_effect=self.fake_download(exe)):
+                report = fetch.run(self.args(work))
+            self.assertEqual(report["source_kind"], "exe")
+            self.assertFalse(report["data_validated"])
+            self.assertEqual(report["game_dir"], ".")
+            self.assertEqual((work / "game" / "TMNT_EN.EXE").read_bytes(), exe)
+            self.assertFalse((work / "source.zip").exists())
+
+    def test_raw_exe_rejects_wrong_size_or_hash(self):
+        exe = b"MZfake supported exe"
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            with mock.patch.dict(os.environ, {"GAME_ZIP_URL": "https://example.com/TMNT_EN.EXE"}), \
+                 mock.patch.object(fetch.vita, "EXE_SHA1", hashlib.sha1(exe).hexdigest()), \
+                 mock.patch.object(fetch, "SUPPORTED_EXE_BYTES", len(exe) + 1), \
+                 mock.patch.object(fetch, "download", side_effect=self.fake_download(exe)):
+                with self.assertRaises(fetch.GameArchiveError):
+                    fetch.run(self.args(work))
+
+    def test_exe_only_zip_must_contain_only_exe(self):
+        exe = b"MZfake supported exe"
+        good = io.BytesIO()
+        with zipfile.ZipFile(good, "w") as z:
+            z.writestr("TMNT_EN.EXE", exe)
+        bad = io.BytesIO()
+        with zipfile.ZipFile(bad, "w") as z:
+            z.writestr("TMNT_EN.EXE", exe)
+            z.writestr("bgm.afs", b"not needed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with mock.patch.dict(os.environ, {"GAME_ZIP_URL": "https://example.com/source.zip"}), \
+                 mock.patch.object(fetch.vita, "EXE_SHA1", hashlib.sha1(exe).hexdigest()), \
+                 mock.patch.object(fetch, "download", side_effect=self.fake_download(good.getvalue())):
+                report = fetch.run(self.args(root / "good"))
+            self.assertEqual(report["source_kind"], "zip")
+            self.assertFalse(report["data_validated"])
+            with mock.patch.dict(os.environ, {"GAME_ZIP_URL": "https://example.com/source.zip"}), \
+                 mock.patch.object(fetch.vita, "EXE_SHA1", hashlib.sha1(exe).hexdigest()), \
+                 mock.patch.object(fetch, "download", side_effect=self.fake_download(bad.getvalue())):
+                with self.assertRaises(fetch.GameArchiveError):
+                    fetch.run(self.args(root / "bad"))
 
 
 class PackVerifyTests(unittest.TestCase):

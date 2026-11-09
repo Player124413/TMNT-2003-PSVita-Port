@@ -68,6 +68,28 @@ class EmbeddedTests(unittest.TestCase):
             with self.assertRaises(embedded.EmbeddedGameError):
                 embedded.validate_manifest(bad)
 
+    def test_exe_only_manifest_defers_data_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            game, code, image, runtime = self.stage(root)
+            manifest = embedded.make_manifest(code, image, runtime, vita.EXE_SHA1, None,
+                                              abi="arm64-v8a", defer_data=True)
+            self.assertEqual(manifest["data_validation"], embedded.DATA_ON_IMPORT)
+            self.assertEqual(set(manifest["data"]), set(vita.DATA_FILES.values()))
+            for meta in manifest["data"].values():
+                self.assertNotIn("size", meta)
+                self.assertNotIn("sha256", meta)
+                self.assertIn(meta["source"], meta["names"])
+            out = root / "embedded-exe-only"
+            embedded.write_directory(out, code, image, manifest)
+            stored = json.loads((out / "assets/tmnt/embedded.json").read_text())
+            embedded.validate_manifest(stored)
+            bad = json.loads(json.dumps(stored))
+            bad["data"]["bgm.afs"]["sha256"] = "0" * 64
+            bad["id"] = embedded.compute_id(bad)
+            with self.assertRaises(embedded.EmbeddedGameError):
+                embedded.validate_manifest(bad)
+
     def test_id_binds_code_image_runtime_and_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

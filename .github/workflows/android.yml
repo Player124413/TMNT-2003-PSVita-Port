@@ -37,7 +37,12 @@ on:
   workflow_dispatch:
     inputs:
       game_zip_url:
-        description: "Optional: direct HTTPS ZIP URL of your installed PC game. With private_apk builds an embedded APK (code+image, no media); otherwise builds a game pack."
+        description: "Optional: direct HTTPS ZIP URL of the installed PC game (EXE + data). Leave empty when using exe_url."
+        required: false
+        default: ""
+        type: string
+      exe_url:
+        description: "Optional: direct HTTPS URL to TMNT_EN.EXE only (~2.15 MiB), or a ZIP containing only that EXE. Requires private_apk; media stays on the phone."
         required: false
         default: ""
         type: string
@@ -47,7 +52,7 @@ on:
         default: false
         type: boolean
       private_apk:
-        description: "With game_zip_url: build an APK with embedded code/image (no full media data). Private repo, or public repo + confirm_public_artifact."
+        description: "With game_zip_url or exe_url: build an APK with embedded code/image (no full media data). Public repo also needs confirm_public_artifact."
         required: false
         default: false
         type: boolean
@@ -75,9 +80,34 @@ env:
   AGP_VERSION: 8.9.2
 
 jobs:
+  dispatch-inputs:
+    name: Validate manual inputs
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check source selection
+        env:
+          GAME_ZIP_URL: ${{ inputs.game_zip_url }}
+          EXE_URL: ${{ inputs.exe_url }}
+          PRIVATE_APK: ${{ inputs.private_apk }}
+        run: |
+          python3 - <<'PY'
+          import os
+          game = bool(os.environ.get("GAME_ZIP_URL", "").strip())
+          exe = bool(os.environ.get("EXE_URL", "").strip())
+          private = os.environ.get("PRIVATE_APK", "false") == "true"
+          if game and exe:
+              raise SystemExit("::error::Fill only one source: game_zip_url or exe_url, not both.")
+          if exe and not private:
+              raise SystemExit("::error::exe_url is only for embedded APK builds; enable private_apk.")
+          if private and not game and not exe:
+              raise SystemExit("::error::private_apk needs game_zip_url or exe_url.")
+          print("Manual inputs are valid.")
+          PY
+
   build:
     name: Build and verify APK (${{ matrix.abi }})
-    if: github.event_name != 'workflow_dispatch' || inputs.game_zip_url == null || inputs.game_zip_url == ''
+    if: github.event_name != 'workflow_dispatch' || ((inputs.game_zip_url == null || inputs.game_zip_url == '') && (inputs.exe_url == null || inputs.exe_url == ''))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -157,7 +187,7 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:lintDebug
 
-      - name: Exercise private embedded packaging with a synthetic no-game fixture
+      - name: Exercise embedded packaging with synthetic hashed and EXE-only fixtures
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -215,6 +245,25 @@ jobs:
           ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
           cd ..
           python tools/android/verify_apk.py build/android-private-app/outputs/apk/debug/app-debug.apk
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          sys.path.insert(0, "tools/android")
+          import make_vita_files as vita
+          import embedded_game as embedded
+
+          work = Path("build/ci/embedded-fixture")
+          module = work / "relink" / "libtmnt_code.so"
+          packaged = work / "libtmnt_runtime.packaged.so"
+          manifest = embedded.make_manifest(module, work / "image.bin", packaged, vita.EXE_SHA1, None,
+                                            abi="${{ matrix.abi }}", defer_data=True)
+          embedded.write_directory(work / "input", module, work / "image.bin", manifest)
+          PY
+          cd android
+          ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
+          cd ..
+          python tools/android/verify_apk.py build/android-private-app/outputs/apk/debug/app-debug.apk
 
       - name: Stage artifacts
         if: always()
@@ -257,7 +306,7 @@ jobs:
 
   game-pack:
     name: Build public game pack from URL
-    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != '' && !inputs.private_apk
+    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != '' && (inputs.exe_url == null || inputs.exe_url == '') && !inputs.private_apk
     uses: ./.github/workflows/android-game-pack.yml
     with:
       game_zip_url: ${{ inputs.game_zip_url }}
@@ -266,9 +315,10 @@ jobs:
 
   private-apk:
     name: Build embedded APK from URL
-    if: github.event_name == 'workflow_dispatch' && inputs.game_zip_url != null && inputs.game_zip_url != '' && inputs.private_apk
+    if: github.event_name == 'workflow_dispatch' && inputs.private_apk && ((inputs.game_zip_url != null && inputs.game_zip_url != '' && (inputs.exe_url == null || inputs.exe_url == '')) || (inputs.exe_url != null && inputs.exe_url != '' && (inputs.game_zip_url == null || inputs.game_zip_url == '')))
     uses: ./.github/workflows/android-private-apk.yml
     with:
       game_zip_url: ${{ inputs.game_zip_url }}
+      exe_url: ${{ inputs.exe_url }}
       target_abi: ${{ inputs.target_abi }}
       confirm_public_artifact: ${{ inputs.confirm_public_artifact == true || inputs.confirm_public_artifact == 'true' }}
