@@ -18,7 +18,7 @@ import static org.junit.Assert.assertEquals;
 public class SDLMainLibraryTest {
     private static final String LIB_DIR = "/data/app/org.tmnt.port/lib/arm64";
 
-    @After public void clearSingleton() { SDLActivity.mSingleton = null; }
+    @After public void clearSingleton() { SDLActivity.mSingleton = null; SDL.setContext(null); }
 
     private static Context context() {
         return new ContextWrapper(null) {
@@ -37,10 +37,11 @@ public class SDLMainLibraryTest {
     }
 
     @Test public void pinnedSdlDefaultUsesLastLoadedLibrary() {
+        // SDLActivity.getContext() is static and delegates to SDL.getContext().
+        SDL.setContext(context());
         for (boolean embedded : new boolean[]{false, true}) {
             SDLActivity probe = new SDLActivity() {
                 @Override protected String[] getLibraries() { return NativeLaunch.libraries(embedded); }
-                @Override public Context getContext() { return context(); }
             };
             SDLActivity.mSingleton = probe;
             String expected = LIB_DIR + (embedded ? "/libtmnt_code.so" : "/libtmnt_runtime.so");
@@ -49,7 +50,7 @@ public class SDLMainLibraryTest {
     }
 
     @Test public void gameActivityAlwaysSelectsRuntimeEntryPoint() {
-        GameActivity game = new GameActivity() {
+        var game = new GameActivity() {
             @Override public Context getApplicationContext() { return context(); }
             public String entryLibrary() { return getMainSharedObject(); }
             public String entryFunction() { return getMainFunction(); }
