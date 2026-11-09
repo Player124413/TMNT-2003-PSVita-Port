@@ -178,7 +178,21 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:testDebugUnitTest :app:assembleDebug
+        run: |
+          mkdir -p ../build/ci
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:testDebugUnitTest :app:assembleDebug 2>&1 | tee ../build/ci/gradle-clean.log
+
+      - name: Surface Gradle failure details
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("build/ci/gradle-clean.log")
+          if p.is_file():
+              text = p.read_text(errors="replace")[-4000:]
+              print("::error::Gradle failure tail%0A" + text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
+          PY
 
       - name: Verify APK and exercise game-pack ABI without game data
         run: python tools/android/verify_apk.py android/app/build/outputs/apk/debug/app-debug.apk
