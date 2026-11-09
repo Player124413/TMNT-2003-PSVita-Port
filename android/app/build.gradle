@@ -35,8 +35,8 @@ android {
         applicationId 'org.tmnt.port'
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0-android'
+        versionCode 2
+        versionName '0.1.1-android'
         buildConfigField 'boolean', 'EMBEDDED_GAME', embeddedDir != null ? 'true' : 'false'
         buildConfigField 'String', 'PORT_ABI', '"' + portAbi + '"'
         if (embeddedDir != null) {
@@ -62,6 +62,9 @@ android {
     }
     externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
     buildFeatures { buildConfig true }
+    // Pure JVM tests exercise the pinned SDLActivity main-library rule and our override without
+    // starting SDL/Android. Mockable android.jar methods return defaults instead of throwing.
+    testOptions { unitTests.returnDefaultValues = true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes {
         debug { debuggable true }
@@ -89,4 +92,8 @@ android {
         }
     }
     lint { lintConfig file('lint.xml'); abortOnError true; disable 'MissingTranslation' }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
 }

@@ -178,7 +178,7 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} :app:testDebugUnitTest :app:assembleDebug
 
       - name: Verify APK and exercise game-pack ABI without game data
         run: python tools/android/verify_apk.py android/app/build/outputs/apk/debug/app-debug.apk
@@ -214,7 +214,7 @@ jobs:
           embedded.write_directory(work / "input", module, image, manifest)
           PY
           cd android
-          ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace -PtmntAbi=${{ matrix.abi }} -PtmntEmbeddedDir="$GITHUB_WORKSPACE/build/ci/embedded-fixture/input" :app:testDebugUnitTest :app:assembleDebug
           cd ..
           python - <<'PY'
           from pathlib import Path
@@ -300,6 +300,7 @@ jobs:
           name: android-build-reports-${{ matrix.abi }}
           path: |
             android/app/build/reports/**
+            build/android-private-app/reports/**
             build/ci-artifacts/synthetic-pack-NO-GAME-DATA.tmnt.zip
           if-no-files-found: warn
           retention-days: 7

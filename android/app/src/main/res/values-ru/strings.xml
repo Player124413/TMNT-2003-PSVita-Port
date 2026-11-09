@@ -25,7 +25,7 @@
     <string name="editor_hint">Перетаскивай кнопки пальцем. Выбери кнопку, чтобы изменить размер, прозрачность или действие. Раскладка учитывает безопасные зоны экрана.</string>
     <string name="selected">Выбранная кнопка</string><string name="size">Размер</string><string name="action">Действие</string>
     <string name="resume">Продолжить</string><string name="pause">Пауза</string><string name="edit">Изменить раскладку</string><string name="back_launcher">Лаунчер</string><string name="saved">Раскладка сохранена</string>
-    <string name="importing">Проверка и импорт…</string><string name="cancel">Отмена</string><string name="error">Не удалось импортировать</string><string name="ok">ОК</string>
+    <string name="importing">Проверка и импорт…</string><string name="cancel">Отмена</string><string name="error">Ошибка</string><string name="ok">ОК</string>
     <string name="licenses">Лицензии открытых компонентов</string><string name="log">Отправить журнал диагностики</string><string name="delete">Удалить файлы игры</string><string name="delete_confirm">Удалить импортированные файлы? Сохранения и раскладка останутся.</string>
     <string name="import_ok">Файлы установлены. Можно играть.</string><string name="free_space">Мало места для пакета игры и резерва 512 МБ.</string>
     <string name="weak">Атака</string><string name="strong">Сильная</string><string name="jump">Прыжок</string><string name="shuriken">Сюрикен</string><string name="dash">Рывок</string><string name="switch_turtle">Смена</string><string name="juggle">Жонглирование</string><string name="special">Спецатака</string><string name="start">Старт</string><string name="stick">Движение</string>

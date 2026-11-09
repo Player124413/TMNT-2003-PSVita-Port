@@ -51,7 +51,7 @@
     <string name="saved">Layout saved</string>
     <string name="importing">Checking and importing…</string>
     <string name="cancel">Cancel</string>
-    <string name="error">Could not import</string>
+    <string name="error">Error</string>
     <string name="ok">OK</string>
     <string name="licenses">Open-source licenses</string>
     <string name="log">Share diagnostic log</string>

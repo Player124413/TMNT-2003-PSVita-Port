@@ -108,7 +108,7 @@ def main(argv=None):
     abi = args.abi
 
     print("Building the clean %s runtime first; the private module links against it." % abi, flush=True)
-    gradle("-PtmntAbi=" + abi, ":app:assembleDebug")
+    gradle("-PtmntAbi=" + abi, ":app:testDebugUnitTest", ":app:assembleDebug")
     runtime = ROOT / "build/android-runtime" / abi / "libtmnt_runtime.so"
     if not runtime.is_file():
         die("runtime was not produced: " + str(runtime))
@@ -129,7 +129,7 @@ def main(argv=None):
         embedded.write_directory(work_dir, module, image, manifest)
 
     print("Packaging the private APK with embedded code and image.", flush=True)
-    gradle("-PtmntAbi=" + abi, "-PtmntEmbeddedDir=" + str(work_dir), ":app:assembleDebug")
+    gradle("-PtmntAbi=" + abi, "-PtmntEmbeddedDir=" + str(work_dir), ":app:testDebugUnitTest", ":app:assembleDebug")
     final_apk = apk_path(True)
     if not final_apk.is_file():
         die("private APK was not produced: " + str(final_apk))
