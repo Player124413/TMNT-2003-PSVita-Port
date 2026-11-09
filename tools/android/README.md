@@ -11,6 +11,8 @@
 - `test_game_zip.py` tests URL/redirect/ZIP safety and pack verification with synthetic data only.
 - `test_embedded.py` tests embedded manifest/staging rules with synthetic data only.
 - `test_touch.c` tests the atomic touch/pause/perf contract on the host.
+- `android/app/src/test/java` runs JVM regression tests against the pinned SDLActivity main-library rule,
+  the GameActivity runtime-entry override and the diagnostic logcat filters; CI runs them for clean and embedded builds.
 
 The Gradle project is `../../android`. The clean APK and the committed repository must never contain game code/data. The
 embedded APK deliberately embeds game-derived code/image (but no full media data): in a private repository its CI artifact is

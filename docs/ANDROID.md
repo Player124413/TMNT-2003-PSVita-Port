@@ -54,6 +54,7 @@ NDK 27.2.12479018 и CMake 3.22.1. Он запускается на push в `mai
 
 Что проверяется:
 - host-тесты генератора пакета и атомарного touch-ввода;
+- JVM-тесты выбора SDL main-библиотеки (`:app:testDebugUnitTest`) для clean и embedded вариантов;
 - сборка `:app:assembleDebug` и `:app:lintDebug`;
 - подпись APK, выравнивание (для `arm64-v8a` также 16 KiB pages), manifest, ABI и отсутствие игровых данных внутри APK;
 - линковка синтетического `tmnt_code.so` с рантаймом из APK и создание тестового `.tmnt.zip`.
@@ -175,6 +176,17 @@ Workflow `.github/workflows/android-private-apk.yml` («Android embedded APK fro
 код и образ, но не полные игровые данные; распространяйте его только если у вас есть такое право
 (в публичном репозитории артефакт будет доступен всем).
 
+### Если игра закрывается сразу после «Играть»
+
+Начиная с `0.1.1-android` исправлен запуск embedded APK: SDL больше не ищет `SDL_main` в последней
+загруженной `libtmnt_code.so`, а всегда открывает `libtmnt_runtime.so`. Установите обновлённый APK той
+же ABI поверх старого (данные и настройки сохраняются) и попробуйте снова.
+
+Если вылет остался, не перезапускайте игру много раз: вернитесь в лаунчер и нажмите
+**Отправить журнал диагностики**. Отчёт теперь включает буферы `main`/`crash`, теги native crash
+(`DEBUG`, `libc`, `crash_dump*`) и, на Android 11+, системные причины завершения процесса с trace.
+Приложите этот файл к сообщению об ошибке вместе с моделью телефона и ABI APK.
+
 ## Сборка APK из исходников
 
 ```sh
@@ -238,6 +250,8 @@ APK появится в `android/app/build/outputs/apk/debug/`. Gradle сам с
   только семь PC-данных. Полный ZIP-режим сверяет их с хешами сборки; EXE-only режим проверяет состав/лимиты
   и записывает SHA-256 на телефоне. Код из хранилища не загружается.
 - `GameActivity` работает в отдельном процессе `:game`; лаунчер/редактор остаются живы при выходе игры.
+  Точка входа `SDL_main` явно берётся из `libtmnt_runtime.so`: embedded APK загружает `libtmnt_code.so`
+  последним, но эта библиотека содержит только игровой код, а не SDL entry point.
 - Импорт ограничен 3 GiB и фиксированным списком имён; проверяются размеры/лимиты, SHA-256 сверяется или
   записывается при импорте; запись атомарная через staging.
 - CI-workflow embedded APK проверяет видимость репозитория: в приватном собирает сразу, в публичном
@@ -252,7 +266,7 @@ python3 tools/android/test_android.py
 python3 tools/android/test_game_zip.py
 python3 tools/android/test_embedded.py
 cc -std=c11 -I. tools/android/test_touch.c rt/android/touch.c -o build/test_touch && build/test_touch
-cd android && ./gradlew :app:lintDebug
+cd android && ./gradlew :app:testDebugUnitTest :app:lintDebug
 ```
 
 Перед релизом обязательны реальные проверки: импорт/повторный импорт/отмена, холодный старт, пауза/фон,

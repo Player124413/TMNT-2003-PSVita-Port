@@ -151,9 +151,7 @@ public final class LauncherActivity extends Activity {
     private void shareLog() {
         executor.execute(()->{
             try {
-                File dir=new File(getCacheDir(),"diagnostics");dir.mkdirs();final File f=new File(dir,"tmnt-log.txt");
-                Process p=new ProcessBuilder("logcat","-d","-v","time","-s","TMNT:V","SDL:V","SDL/APP:V","AndroidRuntime:E").redirectOutput(f).start();
-                if(p.waitFor()!=0)throw new java.io.IOException("logcat failed");
+                final File f=Diagnostics.collect(getApplicationContext());
                 runOnUiThread(()->{
                     Uri uri=DiagnosticProvider.uri(this,f);
                     Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_STREAM,uri);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);

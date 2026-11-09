@@ -29,9 +29,14 @@ public class GameActivity extends SDLActivity {
         }
     }};
     @Override protected String[] getLibraries(){
-        return BuildConfig.EMBEDDED_GAME ? new String[]{"SDL2","tmnt_runtime","tmnt_code"} : new String[]{"SDL2","tmnt_runtime"};
+        return NativeLaunch.libraries(BuildConfig.EMBEDDED_GAME);
     }
-    @Override protected String getMainFunction(){return "SDL_main";}
+    // Do not inherit SDLActivity's "last loaded library" rule: embedded APKs load tmnt_code last,
+    // but SDL_main is exported by tmnt_runtime. Selecting tmnt_code here closes the game on Play.
+    @Override protected String getMainSharedObject(){
+        return NativeLaunch.mainLibrary(getApplicationContext().getApplicationInfo().nativeLibraryDir);
+    }
+    @Override protected String getMainFunction(){return NativeLaunch.MAIN_FUNCTION;}
     @Override public void onCreate(Bundle state){
         super.onCreate(state); Ui.immersive(this); Ui.back(this,this::showPause);
         if(mBrokenLibraries)return;
